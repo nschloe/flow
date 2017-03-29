@@ -1,0 +1,9 @@
+*.pyc
+*.msh
+*.xml
+*.h5
+*.xdmf
+*.vtu
+*.ogv
+*.html
+.cache/
