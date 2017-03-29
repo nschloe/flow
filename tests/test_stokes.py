@@ -15,12 +15,16 @@ import sympy
 MAX_DEGREE = 5
 
 
+def _ccode(*args, **kwargs):
+    # FEniCS needs to have M_PI replaced by pi
+    return sympy.ccode(*args, **kwargs).replace('M_PI', 'pi')
+
+
 def _get_stokes_rhs(u, p):
     '''Given a solution u of the Cartesian Navier-Stokes equations, return
     a matching right-hand side f.
     '''
     x = sympy.DeferredVector('x')
-    t, mu, rho = sympy.symbols('t, mu, rho')
 
     # Make sure that the exact solution is indeed analytically div-free.
     d = sympy.diff(u[0], x[0]) + sympy.diff(u[1], x[1])
@@ -28,17 +32,18 @@ def _get_stokes_rhs(u, p):
     assert d == 0
 
     f0 = (
-        - mu * (sympy.diff(u[0], x[0]) + sympy.diff(u[0], x[1]))
+        - (sympy.diff(u[0], x[0]) + sympy.diff(u[0], x[1]))
         + sympy.diff(p, x[0])
         )
     f1 = (
-        - mu * (sympy.diff(u[1], x[0]) + sympy.diff(u[1], x[1]))
+        - (sympy.diff(u[1], x[0]) + sympy.diff(u[1], x[1]))
         + sympy.diff(p, x[1])
         )
     f = (
         sympy.simplify(f0),
         sympy.simplify(f1)
         )
+
     return f
 
 
@@ -63,6 +68,37 @@ class Flat(object):
         return UnitSquareMesh(n, n, 'left/right')
 
 
+class Guermond1(object):
+    '''Problem 1 from section 3.7.1 in
+        An overview of projection methods for incompressible flows;
+        Guermond, Minev, Shen;
+        Comp. Meth. in Appl. Mech. and Eng., vol. 195, 44-47, pp. 6011-6045;
+        <http://www.sciencedirect.com/science/article/pii/S0045782505004640>.
+    '''
+    def __init__(self):
+        from sympy import pi, sin, cos
+        x = sympy.DeferredVector('x')
+
+        u = (
+            +pi * 2 * sin(pi*x[1]) * cos(pi*x[1]) * sin(pi*x[0])**2,
+            -pi * 2 * sin(pi*x[0]) * cos(pi*x[0]) * sin(pi*x[1])**2,
+            )
+        p = cos(pi*x[0]) * sin(pi*x[1])
+
+        self.solution = {
+            'u': {'value': u, 'degree': MAX_DEGREE},
+            'p': {'value': p, 'degree': MAX_DEGREE},
+            }
+        self.f = {
+            'value': _get_stokes_rhs(u, p),
+            'degree': MAX_DEGREE,
+            }
+        return
+
+    def mesh_generator(self, n):
+        return UnitSquareMesh(n, n, 'left/right')
+
+
 def assert_order(problem):
     mesh_sizes = [8, 16, 32]
     for mesh_size in mesh_sizes:
@@ -75,20 +111,20 @@ def compute_error(problem, mesh_size):
 
     u_sol = Expression(
             (
-                sympy.ccode(problem.solution['u']['value'][0]),
-                sympy.ccode(problem.solution['u']['value'][1]),
+                _ccode(problem.solution['u']['value'][0]),
+                _ccode(problem.solution['u']['value'][1]),
             ),
             degree=problem.solution['u']['degree']
             )
     p_sol = Expression(
-            sympy.ccode(problem.solution['p']['value']),
+            _ccode(problem.solution['p']['value']),
             degree=problem.solution['p']['degree']
             )
 
     f = Expression(
             (
-                sympy.ccode(problem.f['value'][0]),
-                sympy.ccode(problem.f['value'][1]),
+                _ccode(problem.f['value'][0]),
+                _ccode(problem.f['value'][1]),
             ),
             degree=problem.f['degree']
             )
@@ -127,7 +163,7 @@ def show_errors(hmax, u_errors, p_errors):
 
 # TODO add test for spatial order
 @pytest.mark.parametrize('problem', [
-    Flat(),
+    Guermond1(),
     ])
 def test_order(problem, method):
     assert_order(problem)
@@ -138,6 +174,7 @@ if __name__ == '__main__':
     mesh_sizes = [8, 16, 32]
     hmax, u_errors, p_errors = numpy.array([compute_error(
         Flat(),
+        # Guermond1(),
         mesh_size
         )
         for mesh_size in mesh_sizes
