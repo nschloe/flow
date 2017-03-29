@@ -105,7 +105,7 @@ def _rhs_weak(u, v, f, rho, mu):
     #
     # it is advised to use (u{k}.\nabla)u^{k+1} for the treatment of the
     # nonlinear term. In connection with the the div-stabilitation, this yields
-    # unconditional stability of the scheme. On the other hand, and advantage
+    # unconditional stability of the scheme. On the other hand, an advantage
     # of treating the nonlinear term purely explicitly is that the resulting
     # problem would be symmetric and positive definite, qualifying for robust
     # AMG preconditioning.
@@ -430,10 +430,12 @@ class PressureProjection(object):
                       'linear_solver': 'iterative',
                       'symmetric': True,
                       'preconditioner': 'hypre_amg',
-                      'krylov_solver': {'relative_tolerance': tol,
-                                        'absolute_tolerance': 0.0,
-                                        'maximum_iterations': 100,
-                                        'monitor_convergence': verbose}
+                      'krylov_solver': {
+                          'relative_tolerance': tol,
+                          'absolute_tolerance': 0.0,
+                          'maximum_iterations': 100,
+                          'monitor_convergence': verbose
+                          }
                   })
         else:
             # If we're dealing with a pure Neumann problem here (which is the

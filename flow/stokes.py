@@ -45,7 +45,7 @@ def solve(
     L = dot(f, v)*dx
     A, b = assemble_system(a, L, bcs)
 
-    if has_petsc() and False:
+    if False and has_petsc():
         # For an assortment of preconditioners, see
         #
         #     Performance and analysis of saddle point preconditioners
