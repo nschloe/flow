@@ -202,9 +202,9 @@ if __name__ == '__main__':
     mesh_sizes = [8, 16, 32]
     Dt = [0.5 ** k for k in range(20)]
     errors = helpers.compute_time_errors(
-        # problem_flat,
+        problem_flat,
         # problem_whirl,
-        problem_guermond1,
+        # problem_guermond1,
         # problem_guermond2,
         # problem_taylor,
         navsto.IPCS,

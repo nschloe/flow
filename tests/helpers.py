@@ -12,7 +12,7 @@ import numpy
 import sympy
 import warnings
 
-from maelstrom.message import Message
+from flow.message import Message
 
 
 def _truncate_degree(degree, max_degree=10):

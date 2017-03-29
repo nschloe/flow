@@ -5,13 +5,14 @@ Numerical solution schemes for the Stokes equation in cylindrical coordinates.
 '''
 
 from dolfin import (
-    MixedFunctionSpace, DirichletBC, TestFunctions, TrialFunctions, inner,
+    DirichletBC, TestFunctions, TrialFunctions, inner,
     grad, dx, dot, div, assemble_system, KrylovSolver, PETScKrylovSolver,
-    Function, has_petsc, PETScOptions, PETScPreconditioner, SubSpace
+    Function, has_petsc, PETScOptions, PETScPreconditioner,
+    VectorElement, FiniteElement, FunctionSpace
     )
 
 
-def solve(W, P,
+def solve(mesh,
           mu,
           u_bcs, p_bcs,
           f,
@@ -21,7 +22,9 @@ def solve(W, P,
     # Some initial sanity checks.
     assert mu > 0.0
 
-    WP = MixedFunctionSpace([W, P])
+    W = VectorElement('Lagrange', mesh.ufl_cell(), 2)
+    P = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
+    WP = FunctionSpace(mesh, W*P)
 
     # Translate the boundary conditions into the product space.
     # This conditional loop is able to deal with conditions of the kind

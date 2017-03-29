@@ -19,7 +19,7 @@ or
 '''
 
 # import .stabilization as stab
-from .messsage import Message
+from .message import Message
 
 from dolfin import (
     dot, inner, grad, dx, div, Function, TestFunction, solve,
