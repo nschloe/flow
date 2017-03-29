@@ -3,7 +3,6 @@
 [![CircleCI](https://img.shields.io/circleci/project/github/nschloe/flow.svg)](https://circleci.com/gh/nschloe/flow)
 [![codecov](https://codecov.io/gh/nschloe/flow/branch/master/graph/badge.svg)](https://codecov.io/gh/nschloe/flow)
 [![Code Health](https://landscape.io/github/nschloe/flow/master/landscape.png)](https://landscape.io/github/nschloe/flow/master)
-[![Documentation Status](https://readthedocs.org/projects/flow/badge/?version=latest)](https://readthedocs.org/projects/flow/?badge=latest)
 
 
 ### Testing
