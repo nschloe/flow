@@ -21,7 +21,9 @@ Also:
     <http://www.cs.sandia.gov/~pbboche/papers_pdf/2004CMAME.pdf>.
 
 '''
-from dolfin import *
+from dolfin import (
+    Expression
+    )
 
 
 #

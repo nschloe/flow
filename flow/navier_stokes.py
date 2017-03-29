@@ -613,11 +613,17 @@ class AB2R():
                     f,  # right-hand side
                     rho,
                     mu,
-                    dudt_bcs=[],
-                    p_bcs=[],
+                    dudt_bcs=None,
+                    p_bcs=None,
                     eps=1.0e-4,  # relative error tolerance
                     verbose=True
                     ):
+        if dudt_bcs is None:
+            dudt_bcs = []
+
+        if p_bcs is None:
+            p_bcs = []
+
         # Make sure that the initial velocity is divergence-free.
         alpha = norm(u0, 'Hdiv0')
         if abs(alpha) > DOLFIN_EPS:
