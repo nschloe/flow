@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+import helpers
 import flow
 
 from dolfin import (
@@ -101,10 +102,24 @@ class Guermond1(object):
         return UnitSquareMesh(n, n, 'left/right')
 
 
-def assert_order(problem):
-    mesh_sizes = [8, 16, 32]
-    for mesh_size in mesh_sizes:
+@pytest.mark.parametrize('problem', [
+    Guermond1(),
+    ])
+def test_order(problem):
+    mesh_sizes = [8, 16]
+    hmax, u_errors, p_errors = numpy.array([
         compute_error(problem, mesh_size)
+        for mesh_size in mesh_sizes
+        ]).T
+
+    # compute numerical orders of convergence
+    u_order = \
+        helpers._compute_numerical_order_of_convergence(hmax, u_errors)[0]
+    p_order = \
+        helpers._compute_numerical_order_of_convergence(hmax, p_errors)[0]
+
+    assert u_order > 1.9
+    assert p_order > 1.9
     return
 
 
@@ -163,15 +178,6 @@ def show_errors(hmax, u_errors, p_errors):
     plt.xlabel('hmax')
     plt.legend()
     plt.show()
-    return
-
-
-# TODO add test for spatial order
-@pytest.mark.parametrize('problem', [
-    Guermond1(),
-    ])
-def test_order(problem, method):
-    assert_order(problem)
     return
 
 
