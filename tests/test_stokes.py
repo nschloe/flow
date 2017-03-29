@@ -20,7 +20,7 @@ def _ccode(*args, **kwargs):
     return sympy.ccode(*args, **kwargs).replace('M_PI', 'pi')
 
 
-def _get_stokes_rhs(u, p):
+def _get_stokes_rhs(u, p, mu):
     '''Given a solution u of the Cartesian Navier-Stokes equations, return
     a matching right-hand side f.
     '''
@@ -32,11 +32,11 @@ def _get_stokes_rhs(u, p):
     assert d == 0
 
     f0 = (
-        - (sympy.diff(u[0], x[0]) + sympy.diff(u[0], x[1]))
+        - mu * (sympy.diff(u[0], x[0], 2) + sympy.diff(u[0], x[1], 2))
         + sympy.diff(p, x[0])
         )
     f1 = (
-        - (sympy.diff(u[1], x[0]) + sympy.diff(u[1], x[1]))
+        - mu * (sympy.diff(u[1], x[0], 2) + sympy.diff(u[1], x[1], 2))
         + sympy.diff(p, x[1])
         )
     f = (
@@ -58,8 +58,9 @@ class Flat(object):
             'u': {'value': u, 'degree': 1},
             'p': {'value': p, 'degree': 1},
             }
+        self.mu = 1.0
         self.f = {
-            'value': _get_stokes_rhs(u, p),
+            'value': _get_stokes_rhs(u, p, self.mu),
             'degree': MAX_DEGREE,
             }
         return
@@ -89,8 +90,9 @@ class Guermond1(object):
             'u': {'value': u, 'degree': MAX_DEGREE},
             'p': {'value': p, 'degree': MAX_DEGREE},
             }
+        self.mu = 1.0
         self.f = {
-            'value': _get_stokes_rhs(u, p),
+            'value': _get_stokes_rhs(u, p, self.mu),
             'degree': MAX_DEGREE,
             }
         return
@@ -109,23 +111,17 @@ def assert_order(problem):
 def compute_error(problem, mesh_size):
     mesh = problem.mesh_generator(mesh_size)
 
+    u = problem.solution['u']
     u_sol = Expression(
-            (
-                _ccode(problem.solution['u']['value'][0]),
-                _ccode(problem.solution['u']['value'][1]),
-            ),
-            degree=problem.solution['u']['degree']
-            )
-    p_sol = Expression(
-            _ccode(problem.solution['p']['value']),
-            degree=problem.solution['p']['degree']
+            (_ccode(u['value'][0]), _ccode(u['value'][1])),
+            degree=u['degree']
             )
 
+    p = problem.solution['p']
+    p_sol = Expression(_ccode(p['value']), degree=p['degree'])
+
     f = Expression(
-            (
-                _ccode(problem.f['value'][0]),
-                _ccode(problem.f['value'][1]),
-            ),
+            (_ccode(problem.f['value'][0]), _ccode(problem.f['value'][1])),
             degree=problem.f['degree']
             )
 
@@ -140,7 +136,7 @@ def compute_error(problem, mesh_size):
     u_approx, p_approx = flow.stokes.solve(
         WP,
         bcs=[u_bcs, p_bcs],
-        mu=1.0,
+        mu=problem.mu,
         f=f,
         verbose=True,
         tol=1.0e-12
@@ -153,8 +149,17 @@ def compute_error(problem, mesh_size):
 
 
 def show_errors(hmax, u_errors, p_errors):
+    # plot order indicators
+    for order in range(5):
+        plt.loglog(
+                [hmax[0], hmax[-1]],
+                [u_errors[0], u_errors[0] * (hmax[-1] / hmax[0])**order],
+                color='0.7'
+                )
+
     plt.loglog(hmax, u_errors, linestyle='-', marker='.', label='||u - uh||')
     plt.loglog(hmax, p_errors, linestyle='-', marker='.', label='||p - ph||')
+
     plt.xlabel('hmax')
     plt.legend()
     plt.show()
@@ -173,8 +178,8 @@ def test_order(problem, method):
 if __name__ == '__main__':
     mesh_sizes = [8, 16, 32]
     hmax, u_errors, p_errors = numpy.array([compute_error(
-        Flat(),
-        # Guermond1(),
+        # Flat(),
+        Guermond1(),
         mesh_size
         )
         for mesh_size in mesh_sizes
