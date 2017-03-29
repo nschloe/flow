@@ -104,6 +104,7 @@ def _assert_time_order(problem, MethodClass, tol=1.0e-10):
 def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
 
     mesh_generator, solution, f, mu, rho, cell_type = problem()
+
     # Translate data into FEniCS expressions.
     sol_u = Expression(
             (
