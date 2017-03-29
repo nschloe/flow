@@ -372,17 +372,17 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
 # TODO add test for spatial order
 @pytest.mark.parametrize('problem', [
     # problem_flat,
-    problem_whirl,
-    # problem_guermond1,
+    # problem_whirl,
+    problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('method', [
+@pytest.mark.parametrize('method_class', [
     navsto.IPCS
     ])
-def test_time_order(problem, MethodClass, tol=1.0e-10):
+def test_time_order(problem, method_class, tol=1.0e-10):
     mesh_sizes = [8, 16, 32]
     Dt = [0.5**k for k in range(2)]
-    errors = compute_time_errors(problem, MethodClass, mesh_sizes, Dt)
+    errors = compute_time_errors(problem, method_class, mesh_sizes, Dt)
     orders = {
         key: helpers._compute_numerical_order_of_convergence(
             Dt, errors[key].T
@@ -393,8 +393,8 @@ def test_time_order(problem, MethodClass, tol=1.0e-10):
     # matches the expected order in at least the first step in the coarsest
     # spatial discretization, and is not getting worse as the spatial
     # discretizations are refining.
-    assert (abs(orders['u'][:, 0] - MethodClass.order['velocity']) < 0.1).all()
-    assert (abs(orders['p'][:, 0] - MethodClass.order['pressure']) < 0.1).all()
+    assert (orders['u'][:, 0] > method_class.order['velocity'] - 0.1).all()
+    assert (orders['p'][:, 0] > method_class.order['pressure'] - 0.1).all()
     return
 
 
@@ -458,8 +458,8 @@ if __name__ == '__main__':
     errors = compute_time_errors(
         # problem_flat,
         # problem_whirl,
-        problem_guermond1,
-        # problem_guermond2,
+        # problem_guermond1,
+        problem_guermond2,
         # problem_taylor,
         navsto.IPCS,
         mesh_sizes, Dt
