@@ -5,47 +5,22 @@ Numerical solution schemes for the Stokes equation in cylindrical coordinates.
 '''
 
 from dolfin import (
-    DirichletBC, TestFunctions, TrialFunctions, inner,
-    grad, dx, dot, div, assemble_system, KrylovSolver, PETScKrylovSolver,
-    Function, has_petsc, PETScOptions, PETScPreconditioner,
-    VectorElement, FiniteElement, FunctionSpace
+    TestFunctions, TrialFunctions, inner, grad, dx, dot, div, assemble_system,
+    KrylovSolver, PETScKrylovSolver, Function, has_petsc, PETScOptions,
+    PETScPreconditioner
     )
 
 
-def solve(mesh,
-          mu,
-          u_bcs, p_bcs,
-          f,
-          verbose=True,
-          tol=1.0e-10
-          ):
+def solve(
+        WP,
+        bcs,
+        mu,
+        f,
+        verbose=True,
+        tol=1.0e-13
+        ):
     # Some initial sanity checks.
     assert mu > 0.0
-
-    W = VectorElement('Lagrange', mesh.ufl_cell(), 2)
-    P = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
-    WP = FunctionSpace(mesh, W*P)
-
-    # Translate the boundary conditions into the product space.
-    # This conditional loop is able to deal with conditions of the kind
-    #
-    #     DirichletBC(W.sub(1), 0.0, right_boundary)
-    #
-    new_bcs = []
-    for k, bcs in enumerate([u_bcs, p_bcs]):
-        for bc in bcs:
-            space = bc.function_space()
-            C = space.component()
-            if len(C) == 0:
-                new_bcs.append(DirichletBC(WP.sub(k),
-                                           bc.value(),
-                                           bc.domain_args[0]))
-            elif len(C) == 1:
-                new_bcs.append(DirichletBC(WP.sub(k).sub(int(C[0])),
-                                           bc.value(),
-                                           bc.domain_args[0]))
-            else:
-                raise RuntimeError('Illegal number of subspace components.')
 
     # Define variational problem
     (u, p) = TrialFunctions(WP)
@@ -68,9 +43,9 @@ def solve(mesh,
     # a = mu * inner(grad(u), grad(v))*dx + dot(grad(p), v) * dx \
     #  - div(u) * q * dx
     L = dot(f, v)*dx
-    A, b = assemble_system(a, L, new_bcs)
+    A, b = assemble_system(a, L, bcs)
 
-    if has_petsc():
+    if has_petsc() and False:
         # For an assortment of preconditioners, see
         #
         #     Performance and analysis of saddle point preconditioners
@@ -80,8 +55,8 @@ def solve(mesh,
         #     <http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.145.3554>.
         #
         # Set up field split.
-        W = SubSpace(WP, 0)
-        P = SubSpace(WP, 1)
+        W = WP.sub(0)
+        P = WP.sub(1)
         u_dofs = W.dofmap().dofs()
         p_dofs = P.dofmap().dofs()
         prec = PETScPreconditioner()
@@ -153,7 +128,7 @@ def solve(mesh,
         # The sign on the last term doesn't matter.
         prec = mu * inner(grad(u), grad(v))*dx \
              - p*q*dx
-        M, _ = assemble_system(prec, L, new_bcs)
+        M, _ = assemble_system(prec, L, bcs)
         # solver = KrylovSolver('tfqmr', 'amg')
         solver = KrylovSolver('gmres', 'amg')
         solver.set_operators(A, M)

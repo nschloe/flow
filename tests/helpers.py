@@ -134,12 +134,13 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
             )
     # Deep-copy expression to be able to provide f0, f1 for the Dirichlet-
     # boundary conditions later on.
-    fenics_rhs1 = Expression(fenics_rhs0.cppcode,
-                             degree=_truncate_degree(f['degree']),
-                             t=0.0,
-                             mu=mu, rho=rho,
-                             cell=cell_type
-                             )
+    fenics_rhs1 = Expression(
+            fenics_rhs0.cppcode,
+            degree=_truncate_degree(f['degree']),
+            t=0.0,
+            mu=mu, rho=rho,
+            cell=cell_type
+            )
     # Create initial states.
     p0 = Expression(
         sol_p.cppcode,
