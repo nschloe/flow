@@ -5,7 +5,7 @@ jobs:
     working_directory: ~/flow
     docker:
       # https://fenicsproject.org/download/
-      - image: quay.io/fenicsproject/stable:current
+      - image: quay.io/fenicsproject/dev:py2
     steps:
       - run: apt-get update
       - run: apt-get install -y python-numpy
