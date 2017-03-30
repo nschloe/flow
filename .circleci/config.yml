@@ -8,8 +8,8 @@ jobs:
       - image: quay.io/fenicsproject/stable:current
     steps:
       - run: apt-get update
-      - run: apt-get install -y python-numpy python-pip git
-      - run: sudo -H pip2 install -U matplotlib pytest pytest-cov
+      - run: apt-get install -y python-pip git
+      - run: sudo -H pip2 install -U matplotlib pytest pytest-cov numpy
       - checkout
       # The actual test
       - run: pytest --version
