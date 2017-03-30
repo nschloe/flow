@@ -12,6 +12,7 @@ jobs:
       - run: sudo -H pip install -U matplotlib pytest pytest-cov
       - checkout
       # The actual test
+      - run: pytest --version
       - run: PYTHONPATH=$PWD:$PYTHONPATH MPLBACKEND=Agg pytest --cov flow
       # submit to codecov
       - run: apt-get install -y curl
