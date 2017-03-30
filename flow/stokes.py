@@ -17,7 +17,8 @@ def solve(
         mu,
         f,
         verbose=True,
-        tol=1.0e-13
+        tol=1.0e-13,
+        max_iter=500
         ):
     # Some initial sanity checks.
     assert mu > 0.0
@@ -136,7 +137,7 @@ def solve(
     solver.parameters['report'] = verbose
     solver.parameters['absolute_tolerance'] = 0.0
     solver.parameters['relative_tolerance'] = tol
-    solver.parameters['maximum_iterations'] = 500
+    solver.parameters['maximum_iterations'] = max_iter
 
     # Solve
     up = Function(WP)
