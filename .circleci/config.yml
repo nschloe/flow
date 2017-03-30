@@ -21,3 +21,4 @@ jobs:
       # submit to codecov
       - run: apt-get install -y curl
       - run: bash <(curl -s https://codecov.io/bash)
+      - run: curl -T /root/.cache/instant/python2.7/error/dolfin_*/compile.log chunk.io
