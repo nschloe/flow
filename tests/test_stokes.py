@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-import helpers
+from helpers import ccode, compute_numerical_order_of_convergence
 import flow
 
 from dolfin import (
@@ -14,11 +14,6 @@ import sympy
 
 
 MAX_DEGREE = 5
-
-
-def _ccode(*args, **kwargs):
-    # FEniCS needs to have M_PI replaced by pi
-    return sympy.ccode(*args, **kwargs).replace('M_PI', 'pi')
 
 
 def _get_stokes_rhs(u, p, mu):
@@ -113,10 +108,8 @@ def test_order(problem):
         ]).T
 
     # compute numerical orders of convergence
-    u_order = \
-        helpers._compute_numerical_order_of_convergence(hmax, u_errors)[0]
-    p_order = \
-        helpers._compute_numerical_order_of_convergence(hmax, p_errors)[0]
+    u_order = compute_numerical_order_of_convergence(hmax, u_errors)[0]
+    p_order = compute_numerical_order_of_convergence(hmax, p_errors)[0]
 
     assert u_order > 1.9
     assert p_order > 1.9
@@ -128,15 +121,15 @@ def compute_error(problem, mesh_size):
 
     u = problem.solution['u']
     u_sol = Expression(
-            (_ccode(u['value'][0]), _ccode(u['value'][1])),
+            (ccode(u['value'][0]), ccode(u['value'][1])),
             degree=u['degree']
             )
 
     p = problem.solution['p']
-    p_sol = Expression(_ccode(p['value']), degree=p['degree'])
+    p_sol = Expression(ccode(p['value']), degree=p['degree'])
 
     f = Expression(
-            (_ccode(problem.f['value'][0]), _ccode(problem.f['value'][1])),
+            (ccode(problem.f['value'][0]), ccode(problem.f['value'][1])),
             degree=problem.f['degree']
             )
 

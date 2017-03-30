@@ -11,7 +11,10 @@ jobs:
       - run: apt-get install -y python-numpy
       - run: apt-get install -y python-pip
       - run: apt-get install -y git
-      - run: sudo -H pip2 install -U matplotlib pytest pytest-cov sympy
+      - run: sudo -H pip2 install -U matplotlib pytest pytest-cov
+      - run: sudo -H pip2 install -U sympy
+      - run: python --version
+      - run: python -c "import sympy; print(sympy.__version__)"
       - checkout
       # The actual test
       - run: PYTHONPATH=$PWD:$PYTHONPATH MPLBACKEND=Agg pytest --cov flow

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-import helpers
+from helpers import ccode, compute_numerical_order_of_convergence
 import flow.navier_stokes as navsto
 
 from dolfin import (
@@ -223,40 +223,31 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
     mesh_generator, solution, f, mu, rho, cell_type = problem()
 
     # Translate data into FEniCS expressions.
+    u = solution['u']
     sol_u = Expression(
-            (
-                sympy.printing.ccode(solution['u']['value'][0]),
-                sympy.printing.ccode(solution['u']['value'][1])
-            ),
-            degree=_truncate_degree(solution['u']['degree']),
-            t=0.0,
-            cell=cell_type
+            (ccode(u['value'][0]), ccode(u['value'][1])),
+            degree=_truncate_degree(u['degree']),
+            t=0.0
             )
+
+    p = solution['p']
     sol_p = Expression(
-            sympy.printing.ccode(solution['p']['value']),
-            degree=_truncate_degree(solution['p']['degree']),
-            t=0.0,
-            cell=cell_type
+            ccode(p['value']),
+            degree=_truncate_degree(p['degree']),
+            t=0.0
             )
 
     fenics_rhs0 = Expression(
-            (
-                sympy.printing.ccode(f['value'][0]),
-                sympy.printing.ccode(f['value'][1])
-            ),
+            (ccode(f['value'][0]), ccode(f['value'][1])),
             degree=_truncate_degree(f['degree']),
-            t=0.0,
-            mu=mu, rho=rho,
-            cell=cell_type
+            t=0.0, mu=mu, rho=rho
             )
     # Deep-copy expression to be able to provide f0, f1 for the Dirichlet-
     # boundary conditions later on.
     fenics_rhs1 = Expression(
             fenics_rhs0.cppcode,
             degree=_truncate_degree(f['degree']),
-            t=0.0,
-            mu=mu, rho=rho,
-            cell=cell_type
+            t=0.0, mu=mu, rho=rho
             )
     # Create initial states.
     p0 = Expression(
@@ -384,9 +375,7 @@ def test_time_order(problem, method_class, tol=1.0e-10):
     Dt = [0.5**k for k in range(2)]
     errors = compute_time_errors(problem, method_class, mesh_sizes, Dt)
     orders = {
-        key: helpers._compute_numerical_order_of_convergence(
-            Dt, errors[key].T
-            ).T
+        key: compute_numerical_order_of_convergence(Dt, errors[key].T).T
         for key in errors
         }
     # The test is considered passed if the numerical order of convergence
@@ -404,9 +393,7 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
     '''
     # Compute the numerical order of convergence.
     orders = {
-        key: helpers._compute_numerical_order_of_convergence(
-            Dt, errors[key].T
-            ).T
+        key: compute_numerical_order_of_convergence(Dt, errors[key].T).T
         for key in errors
         }
 
