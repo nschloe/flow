@@ -5,13 +5,11 @@ jobs:
     working_directory: ~/flow
     docker:
       # https://fenicsproject.org/download/
-      - image: quay.io/fenicsproject/dev:py3
+      - image: quay.io/fenicsproject/stable:current
     steps:
       - run: apt-get update
-      - run: apt-get install -y python-numpy
-      - run: apt-get install -y python3-pip
-      - run: apt-get install -y git
-      - run: sudo -H pip3 install -U matplotlib pytest pytest-cov sympy
+      - run: apt-get install -y python-numpy python-pip git
+      - run: sudo -H pip install -U matplotlib pytest pytest-cov
       - checkout
       # The actual test
       - run: PYTHONPATH=$PWD:$PYTHONPATH MPLBACKEND=Agg pytest --cov flow
