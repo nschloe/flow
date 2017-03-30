@@ -224,9 +224,6 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
 
     # Translate data into FEniCS expressions.
     u = solution['u']
-    print(ccode(u['value'][0]))
-    print
-    print(ccode(u['value'][1]))
     sol_u = Expression(
             (ccode(u['value'][0]), ccode(u['value'][1])),
             degree=_truncate_degree(u['degree']),
@@ -240,17 +237,17 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
             t=0.0
             )
 
+    # Deep-copy expression to be able to provide f0, f1 for the Dirichlet-
+    # boundary conditions later on.
     fenics_rhs0 = Expression(
             (ccode(f['value'][0]), ccode(f['value'][1])),
             degree=_truncate_degree(f['degree']),
             t=0.0, mu=mu, rho=rho
             )
-    # Deep-copy expression to be able to provide f0, f1 for the Dirichlet-
-    # boundary conditions later on.
     fenics_rhs1 = Expression(
             fenics_rhs0.cppcode,
-            degree=_truncate_degree(f['degree']),
-            t=0.0, mu=mu, rho=rho
+            element=fenics_rhs0.ufl_element(),
+            **fenics_rhs0.user_parameters
             )
     # Create initial states.
     p0 = Expression(
@@ -307,14 +304,15 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
             p_bcs = []
             fenics_rhs0.t = 0.0
             fenics_rhs1.t = dt
-            method.step(dt,
-                        u1, p1,
-                        u, p0,
-                        u_bcs=u_bcs, p_bcs=p_bcs,
-                        f0=fenics_rhs0, f1=fenics_rhs1,
-                        verbose=False,
-                        tol=1.0e-10
-                        )
+            method.step(
+                    dt,
+                    u1, p1,
+                    u, p0,
+                    u_bcs=u_bcs, p_bcs=p_bcs,
+                    f0=fenics_rhs0, f1=fenics_rhs1,
+                    verbose=False,
+                    tol=1.0e-10
+                    )
             sol_u.t = dt
             sol_p.t = dt
             errors['u'][k][j] = errornorm(sol_u, u1)
