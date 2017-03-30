@@ -224,6 +224,9 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
 
     # Translate data into FEniCS expressions.
     u = solution['u']
+    print(ccode(u['value'][0]))
+    print
+    print(ccode(u['value'][1]))
     sol_u = Expression(
             (ccode(u['value'][0]), ccode(u['value'][1])),
             degree=_truncate_degree(u['degree']),
