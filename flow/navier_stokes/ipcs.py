@@ -24,8 +24,8 @@ from ..message import Message
 from dolfin import (
     dot, inner, grad, dx, div, Function, TestFunction, solve, Constant,
     DOLFIN_EPS, derivative, TrialFunction, FacetNormal, assemble, ds,
-    PETScPreconditioner, PETScKrylovSolver, as_backend_type, norm, info, plot,
-    interactive, PETScOptions
+    PETScPreconditioner, PETScKrylovSolver, as_backend_type,
+    PETScOptions
     )
 
 
@@ -207,15 +207,13 @@ class PressureProjection(object):
 
             if abs(self.theta) > DOLFIN_EPS:
                 # Implicit terms.
-                if f1 is None:
-                    raise RuntimeError('Implicit schemes need right-hand side '
-                                       'at target step (f1).')
+                # Implicit schemes need right-hand side at target step (f1).
+                assert f1 is not None
                 F1 -= self.theta * _rhs_weak(ui, v, f1, self.rho, self.mu)
             if abs(1.0 - self.theta) > DOLFIN_EPS:
                 # Explicit terms.
-                if f0 is None:
-                    raise RuntimeError('Explicit schemes need right-hand side '
-                                       'at current step (f0).')
+                # Explicit schemes need right-hand side at current step (f0).
+                assert f0 is not None
                 F1 -= (1.0 - self.theta) \
                     * _rhs_weak(u[0], v, f0, self.rho, self.mu)
 
@@ -389,16 +387,17 @@ class PressureProjection(object):
         # interactive()
         return
 
-    def _pressure_poisson(self,
-                          p1, p0,
-                          mu, ui,
-                          divu,
-                          p_bcs=None,
-                          p_n=None,
-                          rotational_form=False,
-                          tol=1.0e-10,
-                          verbose=True
-                          ):
+    def _pressure_poisson(
+            self,
+            p1, p0,
+            mu, ui,
+            divu,
+            p_bcs=None,
+            p_n=None,
+            rotational_form=False,
+            tol=1.0e-10,
+            verbose=True
+            ):
         '''Solve the pressure Poisson equation
 
             - \Delta phi = -div(u),
@@ -488,80 +487,80 @@ class PressureProjection(object):
             b_petsc = as_backend_type(b)
             p1_petsc = as_backend_type(p1.vector())
             solver.set_operator(A_petsc)
-            try:
-                solver.solve(p1_petsc, b_petsc)
-            except RuntimeError as error:
-                info('')
-                # Check if the system is indeed consistent.
-                #
-                # If the right hand side is flawed (e.g., by round-off errors),
-                # then it may have a component b1 in the direction of the null
-                # space, orthogonal to the image of the operator:
-                #
-                #     b = b0 + b1.
-                #
-                # When starting with initial guess x0=0, the minimal achievable
-                # relative tolerance is then
-                #
-                #    min_rel_tol = ||b1|| / ||b||.
-                #
-                # If ||b|| is very small, which is the case when ui is almost
-                # divergence-free, then min_rel_to may be larger than the
-                # prescribed relative tolerance tol.
-                #
-                # Use this as a consistency check, i.e., bail out if
-                #
-                #     tol < min_rel_tol = ||b1|| / ||b||.
-                #
-                # For computing ||b1||, we use the fact that the null space is
-                # one-dimensional, i.e.,  b1 = alpha e,  and
-                #
-                #     e.b = e.(b0 + b1) = e.b1 = alpha ||e||^2,
-                #
-                # so  alpha = e.b/||e||^2  and
-                #
-                #     ||b1|| = |alpha| ||e|| = e.b / ||e||
-                #
-                e = Function(P)
-                e.interpolate(Constant(1.0))
-                evec = e.vector()
-                evec /= norm(evec)
-                alpha = b.inner(evec)
-                normB = norm(b)
-                info('Linear system convergence failure.')
-                info(error.message)
-                message = (
-                    'Linear system not consistent! '
-                    '<b,e> = %g, ||b|| = %g, <b,e>/||b|| = %e, tol = %e.'
-                    ) \
-                    % (alpha, normB, alpha/normB, tol)
-                info(message)
-                if tol < abs(alpha) / normB:
-                    info('\int div(u)  =  %e' % assemble(divu * dx))
-                    # n = FacetNormal(Q.mesh())
-                    # info('\int_Gamma n.u = %e' % assemble(dot(n, u)*ds))
-                    # info('\int_Gamma u[0] = %e' % assemble(u[0]*ds))
-                    # info('\int_Gamma u[1] = %e' % assemble(u[1]*ds))
-                    # # Now plot the faulty u on a finer mesh (to resolve the
-                    # # quadratic trial functions).
-                    # fine_mesh = Q.mesh()
-                    # for k in range(1):
-                    #     fine_mesh = refine(fine_mesh)
-                    # V1 = FunctionSpace(fine_mesh, 'CG', 1)
-                    # W1 = V1*V1
-                    # uplot = project(u, W1)
-                    # #uplot = Function(W1)
-                    # #uplot.interpolate(u)
-                    # plot(uplot, title='u_tentative')
-                    # plot(uplot[0], title='u_tentative[0]')
-                    # plot(uplot[1], title='u_tentative[1]')
-                    plot(divu, title='div(u_tentative)')
-                    interactive()
-                    exit()
-                    raise RuntimeError(message)
-                else:
-                    exit()
-                    raise RuntimeError('Linear system failed to converge.')
+
+            solver.solve(p1_petsc, b_petsc)
+
+            # # TODO necessary?
+            # # Check if the system is indeed consistent.
+            # #
+            # # If the right hand side is flawed (e.g., by round-off errors),
+            # # then it may have a component b1 in the direction of the null
+            # # space, orthogonal to the image of the operator:
+            # #
+            # #     b = b0 + b1.
+            # #
+            # # When starting with initial guess x0=0, the minimal achievable
+            # # relative tolerance is then
+            # #
+            # #    min_rel_tol = ||b1|| / ||b||.
+            # #
+            # # If ||b|| is very small, which is the case when ui is almost
+            # # divergence-free, then min_rel_to may be larger than the
+            # # prescribed relative tolerance tol.
+            # #
+            # # Use this as a consistency check, i.e., bail out if
+            # #
+            # #     tol < min_rel_tol = ||b1|| / ||b||.
+            # #
+            # # For computing ||b1||, we use the fact that the null space is
+            # # one-dimensional, i.e.,  b1 = alpha e,  and
+            # #
+            # #     e.b = e.(b0 + b1) = e.b1 = alpha ||e||^2,
+            # #
+            # # so  alpha = e.b/||e||^2  and
+            # #
+            # #     ||b1|| = |alpha| ||e|| = e.b / ||e||
+            # #
+            # e = Function(P)
+            # e.interpolate(Constant(1.0))
+            # evec = e.vector()
+            # evec /= norm(evec)
+            # alpha = b.inner(evec)
+            # normB = norm(b)
+            # info('Linear system convergence failure.')
+            # info(error.message)
+            # message = (
+            #     'Linear system not consistent! '
+            #     '<b,e> = %g, ||b|| = %g, <b,e>/||b|| = %e, tol = %e.'
+            #     ) \
+            #     % (alpha, normB, alpha/normB, tol)
+            # info(message)
+            # if tol < abs(alpha) / normB:
+            #     info('\int div(u)  =  %e' % assemble(divu * dx))
+            #     # n = FacetNormal(Q.mesh())
+            #     # info('\int_Gamma n.u = %e' % assemble(dot(n, u)*ds))
+            #     # info('\int_Gamma u[0] = %e' % assemble(u[0]*ds))
+            #     # info('\int_Gamma u[1] = %e' % assemble(u[1]*ds))
+            #     # # Now plot the faulty u on a finer mesh (to resolve the
+            #     # # quadratic trial functions).
+            #     # fine_mesh = Q.mesh()
+            #     # for k in range(1):
+            #     #     fine_mesh = refine(fine_mesh)
+            #     # V1 = FunctionSpace(fine_mesh, 'CG', 1)
+            #     # W1 = V1*V1
+            #     # uplot = project(u, W1)
+            #     # #uplot = Function(W1)
+            #     # #uplot.interpolate(u)
+            #     # plot(uplot, title='u_tentative')
+            #     # plot(uplot[0], title='u_tentative[0]')
+            #     # plot(uplot[1], title='u_tentative[1]')
+            #     plot(divu, title='div(u_tentative)')
+            #     interactive()
+            #     exit()
+            #     raise RuntimeError(message)
+            # else:
+            #     exit()
+            #     raise RuntimeError('Linear system failed to converge.')
         return
 
 
