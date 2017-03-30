@@ -45,7 +45,7 @@ def solve(
     L = dot(f, v)*dx
     A, b = assemble_system(a, L, bcs)
 
-    if False and has_petsc():
+    if has_petsc():
         # For an assortment of preconditioners, see
         #
         #     Performance and analysis of saddle point preconditioners
@@ -55,17 +55,20 @@ def solve(
         #     <http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.145.3554>.
         #
         # Set up field split.
-        W = WP.sub(0)
-        P = WP.sub(1)
-        u_dofs = W.dofmap().dofs()
-        p_dofs = P.dofmap().dofs()
-        prec = PETScPreconditioner()
-        prec.set_fieldsplit([u_dofs, p_dofs], ['u', 'p'])
-
+        # <https://fenicsproject.org/qa/12856/fieldsplit-petscpreconditioner_set_fieldsplit-arguments>
+        PETScOptions.set('ksp_view')
+        PETScOptions.set('ksp_monitor_true_residual')
         PETScOptions.set('pc_type', 'fieldsplit')
         PETScOptions.set('pc_fieldsplit_type', 'additive')
-        PETScOptions.set('fieldsplit_u_pc_type', 'lu')
-        PETScOptions.set('fieldsplit_p_pc_type', 'jacobi')
+        PETScOptions.set('pc_fieldsplit_detect_saddle_point')
+        PETScOptions.set('fieldsplit_0_ksp_type', 'preonly')
+        PETScOptions.set('fieldsplit_0_pc_type', 'lu')
+        PETScOptions.set('fieldsplit_1_ksp_type', 'preonly')
+        PETScOptions.set('fieldsplit_1_pc_type', 'jacobi')
+
+        solver = PETScKrylovSolver('gmres')
+        solver.set_operator(A)
+        solver.set_from_options()
 
         # <http://scicomp.stackexchange.com/questions/7288/which-preconditioners-and-solver-in-petsc-for-indefinite-symmetric-systems-sho>
         # PETScOptions.set('pc_type', 'fieldsplit')
@@ -114,10 +117,6 @@ def solve(
         # #PETScOptions.set('fieldsplit_p_lsc_ksp_converged_reason')
         # PETScOptions.set('fieldsplit_p_lsc_pc_type', 'bjacobi')
         # PETScOptions.set('fieldsplit_p_lsc_sub_pc_type', 'icc')
-
-        # Create Krylov solver with custom preconditioner.
-        solver = PETScKrylovSolver('gmres', prec)
-        solver.set_operator(A)
     else:
         # Use the preconditioner as recommended in
         # <http://fenicsproject.org/documentation/dolfin/dev/python/demo/pde/stokes-iterative/python/documentation.html>,
