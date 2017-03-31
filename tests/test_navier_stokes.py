@@ -250,7 +250,7 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
             **fenics_rhs0.user_parameters
             )
     # Create initial states.
-    p0 = Expression(
+    p = Expression(
         sol_p.cppcode,
         degree=_truncate_degree(solution['p']['degree']),
         t=0.0,
@@ -275,8 +275,6 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
                 rho, mu,
                 theta=1.0,
                 # theta=0.5,
-                stabilization=None
-                # stabilization='SUPG'
                 )
         u1 = Function(W)
         p1 = Function(P)
@@ -284,30 +282,25 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
         divu1 = Function(P)
         for j, dt in enumerate(Dt):
             # Prepare previous states for multistepping.
-            u = [Expression(
+            u = Expression(
                 sol_u.cppcode,
                 degree=_truncate_degree(solution['u']['degree']),
                 t=0.0,
-                cell=cell_type
-                ),
-                # Expression(
-                # sol_u.cppcode,
-                # degree=_truncate_degree(solution['u']['degree']),
                 # t=0.5*dt,
-                # cell=cell_type
-                # )
-                ]
+                cell=cell_type
+                )
+            u0 = project(u, W)
             sol_u.t = dt
             u_bcs = [DirichletBC(W, sol_u, 'on_boundary')]
             sol_p.t = dt
+            p0 = project(p, P)
             # p_bcs = [DirichletBC(P, sol_p, 'on_boundary')]
             p_bcs = []
             fenics_rhs0.t = 0.0
             fenics_rhs1.t = dt
-            method.step(
+            u1, p1 = method.step(
                     dt,
-                    u1, p1,
-                    u, p0,
+                    u0, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
                     f0=fenics_rhs0, f1=fenics_rhs1,
                     verbose=False,
