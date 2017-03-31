@@ -8,8 +8,8 @@ jobs:
       - image: quay.io/fenicsproject/stable:current
     steps:
       - run: apt-get update
-      - run: apt-get install -y git
-      - run: sudo -H pip2 install -U pytest pytest-cov gmsh
+      - run: apt-get install -y git gmsh
+      - run: sudo -H pip2 install -U pytest pytest-cov
       - run: sudo -H pip2 install -r test_requirements.txt
       - checkout
       # The actual test
