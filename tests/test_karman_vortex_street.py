@@ -31,7 +31,7 @@ def create_mesh(lcar):
     return pygmsh.generate_mesh(geom)
 
 
-def test_karman(num_steps=5, show=False):
+def test_karman(num_steps=2, show=False):
     points, cells, point_data, cell_data, field_data = create_mesh(lcar=0.1)
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
