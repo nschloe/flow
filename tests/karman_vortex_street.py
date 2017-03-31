@@ -4,7 +4,7 @@ import flow
 
 from dolfin import (
         Mesh, SubDomain, FunctionSpace, DOLFIN_EPS, Expression, DirichletBC,
-        VectorElement, FiniteElement, Constant
+        VectorElement, FiniteElement, Constant, plot
         )
 import materials
 import meshio
@@ -31,7 +31,7 @@ def create_mesh(lcar):
     return pygmsh.generate_mesh(geom)
 
 
-def _main():
+def test_karman(num_steps=5, show=False):
     points, cells, point_data, cell_data, field_data = create_mesh(lcar=0.1)
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
@@ -44,32 +44,35 @@ def _main():
     W = WP.sub(0)
     P = WP.sub(1)
 
+    mesh_eps = 1.0e-12
+
     # Define mesh and boundaries.
     class LeftBoundary(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and x[0] < x0 + DOLFIN_EPS
+            return on_boundary and x[0] < x0 + mesh_eps
     left_boundary = LeftBoundary()
 
     class RightBoundary(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and x[0] > x1 - DOLFIN_EPS
+            return on_boundary and x[0] > x1 - mesh_eps
+    right_boundary = RightBoundary()
 
     class LowerBoundary(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and x[1] < y0 + DOLFIN_EPS
+            return on_boundary and x[1] < y0 + mesh_eps
     lower_boundary = LowerBoundary()
 
     class UpperBoundary(SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and x[1] > y1 - DOLFIN_EPS
+            return on_boundary and x[1] > y1 - mesh_eps
     upper_boundary = UpperBoundary()
 
     class ObstacleBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return (
                 on_boundary
-                and x[0] > x0 + DOLFIN_EPS and x[0] < x1 - DOLFIN_EPS
-                and x[1] > y0 + DOLFIN_EPS and x[1] < y1 - DOLFIN_EPS
+                and x[0] > x0 + DOLFIN_EPS and x[0] < x1 - mesh_eps
+                and x[1] > y0 + DOLFIN_EPS and x[1] < y1 - mesh_eps
                 )
     obstacle_boundary = ObstacleBoundary()
 
@@ -102,7 +105,7 @@ def _main():
     # component of the outflow to 0, and letting the normal component du/dn=0
     # (again, this is achieved implicitly by the weak formulation).
     #
-    inflow = Expression('100 * (0.5 + x[1]) * (0.5 - x[1])', degree=2)
+    inflow = Expression('0.1 * (0.5 + x[1]) * (0.5 - x[1])', degree=2)
     u_bcs = [
         DirichletBC(W, (0.0, 0.0), upper_boundary),
         DirichletBC(W, (0.0, 0.0), lower_boundary),
@@ -117,14 +120,15 @@ def _main():
     #     DirichletBC(W.sub(0), 0.0, left_boundary),
     #     # DirichletBC(W.sub(1), 0.0, right_boundary),
     #     ]
+
     # If there is a penetration boundary (i.e., n.u!=0), then the pressure must
-    # be set at the boundary to make sure that the Navier-Stokes problem
-    # remains consistent.
-    # It is not quite clear now where exactly to set the pressure to 0. Inlet,
-    # outlet, some other place? The PPE system is consistent in all cases.
-    # TODO find out more about it
-    # p_bcs = [DirichletBC(Q, 0.0, right_boundary)]
-    p_bcs = []
+    # be set somewhere to make sure that the Navier-Stokes problem remains
+    # consistent.
+    # When solving Stokes with no Dirichlet conditions whatsoever, the pressure
+    # tends to 0 at the outlet. This is natural since there, the liquid can
+    # flow out at the rate it needs to be under no pressure at all.
+    # Hence, at outlets, set the pressure to 0.
+    p_bcs = [DirichletBC(P, 0.0, right_boundary)]
 
     mu = materials.water.dynamic_viscosity(T=293.0)
     # For starting off, solve the Stokes equation.
@@ -133,24 +137,50 @@ def _main():
         u_bcs + p_bcs,
         mu,
         f=Constant((0.0, 0.0)),
-        verbose=True,
+        verbose=False,
         tol=1.0e-13,
         max_iter=1000
         )
 
-    from dolfin import plot, interactive
-    plot(u0)
-    plot(p0)
-    interactive()
+    W2 = u0.function_space()
+    P2 = p0.function_space()
 
-    # stepper = flow.navier_stokes.IPCS(
-    #         W, P, rho, mu,
-    #         theta=1.0,
-    #         stabilization=False
-    #         )
+    rho = materials.water.density(T=293.0)
+    stepper = flow.navier_stokes.IPCS(
+            W2, P2,
+            rho, mu,
+            theta=1.0
+            )
 
-    return mesh, W, P, u_bcs, p_bcs
+    u_bcs = [
+        DirichletBC(W2, (0.0, 0.0), upper_boundary),
+        DirichletBC(W2, (0.0, 0.0), lower_boundary),
+        DirichletBC(W2, (0.0, 0.0), obstacle_boundary),
+        DirichletBC(W2.sub(0), inflow, left_boundary),
+        # DirichletBC(W2.sub(1), 0.0, right_boundary),
+        ]
+    p_bcs = [DirichletBC(P2, 0.0, right_boundary)]
+
+    dt = 1.0e-2
+    for k in range(num_steps):
+        if show:
+            plot(u0)
+            plot(p0)
+
+        u1, p1 = stepper.step(
+                dt,
+                u0, p0,
+                u_bcs, p_bcs,
+                f0=Constant((0.0, 0.0)),
+                f1=Constant((0.0, 0.0)),
+                verbose=True,
+                tol=1.0e-10
+                )
+        u0.assign(u1)
+        p0.assign(p1)
+
+    return
 
 
 if __name__ == '__main__':
-    _main()
+    test_karman(num_steps=1000, show=True)

@@ -6,8 +6,7 @@ Numerical solution schemes for the Stokes equation in cylindrical coordinates.
 
 from dolfin import (
     TestFunctions, TrialFunctions, inner, grad, dx, dot, div, assemble_system,
-    KrylovSolver, PETScKrylovSolver, Function, has_petsc, PETScOptions,
-    PETScPreconditioner
+    KrylovSolver, PETScKrylovSolver, Function, has_petsc, PETScOptions
     )
 
 
@@ -43,10 +42,10 @@ def solve(
         - q * div(u) * dx
     # a = mu * inner(grad(u), grad(v))*dx + dot(grad(p), v) * dx \
     #  - div(u) * q * dx
-    L = dot(f, v)*dx
+    L = inner(f, v)*dx
     A, b = assemble_system(a, L, bcs)
 
-    if has_petsc():
+    if False and has_petsc():
         # For an assortment of preconditioners, see
         #
         #     Performance and analysis of saddle point preconditioners
@@ -144,6 +143,6 @@ def solve(
     solver.solve(up.vector(), b)
 
     # Get sub-functions
-    u, p = up.split()
+    u, p = up.split(True)
 
     return u, p

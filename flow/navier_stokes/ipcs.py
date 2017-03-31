@@ -18,7 +18,6 @@ or
     <http://mumerik.iwr.uni-heidelberg.de/Oberwolfach-Seminar/CFD-Course.pdf>.
 '''
 
-# import .stabilization as stab
 from ..message import Message
 
 from dolfin import (
@@ -150,8 +149,7 @@ class PressureProjection(object):
             self,
             W, P,
             rho, mu,
-            theta,
-            stabilization=None
+            theta
             ):
         assert mu > 0.0
         # Only works for linear elements.
@@ -165,13 +163,11 @@ class PressureProjection(object):
         self.P = P
         self.rho = rho
         self.mu = mu
-        self.stabilization = stabilization
         return
 
     def step(self,
              dt,
-             u1, p1,
-             u, p0,
+             u0, p0,
              u_bcs, p_bcs,
              f0=None, f1=None,
              verbose=True,
@@ -180,8 +176,7 @@ class PressureProjection(object):
         # Some initial sanity checkups.
         assert dt > 0.0
         # Define trial and test functions
-        ui = Function(self.W)
-        v = TestFunction(self.W)
+        v = TestFunction(u0.function_space())
         # Create functions
         # Define coefficients
         k = Constant(dt)
@@ -203,22 +198,25 @@ class PressureProjection(object):
             #     Comput. Methods Appl. Mech. Engrg. 195 (2006) 5995-6010;
             #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JMR06.CMAME.pdf>.
             #
-            F1 = self.rho * inner((ui - u[0])/k, v) * dx
+
+            ui = Function(u0.function_space())
+
+            F1 = self.rho * inner((ui - u0)/k, v) * dx
 
             if abs(self.theta) > DOLFIN_EPS:
                 # Implicit terms.
-                # Implicit schemes need right-hand side at target step (f1).
+                # Implicit schemes need f at target step (f1).
                 assert f1 is not None
                 F1 -= self.theta * _rhs_weak(ui, v, f1, self.rho, self.mu)
             if abs(1.0 - self.theta) > DOLFIN_EPS:
                 # Explicit terms.
-                # Explicit schemes need right-hand side at current step (f0).
+                # Explicit schemes need f at current step (f0).
                 assert f0 is not None
                 F1 -= (1.0 - self.theta) \
-                    * _rhs_weak(u[0], v, f0, self.rho, self.mu)
+                    * _rhs_weak(u0, v, f0, self.rho, self.mu)
 
             if p0:
-                F1 += dot(grad(p0), v) * dx
+                F1 += inner(grad(p0), v) * dx
 
             # if stabilization:
             #     tau = stab.supg2(V.mesh(),
@@ -244,20 +242,20 @@ class PressureProjection(object):
             # What is a good initial guess for the Newton solve?
             # Three choices come to mind:
             #
-            #    (1) the previous solution u_1,
-            #    (2) the intermediate solution from the previous step ui_1,
+            #    (1) the previous solution u0,
+            #    (2) the intermediate solution from the previous step ui0,
             #    (3) the solution of the semilinear system
-            #        (u.\nabla(u) -> u_1.\nabla(u)).
+            #        (u.\nabla(u) -> u0.\nabla(u)).
             #
             # Numerical experiments with the Karman vortex street show that the
             # order of accuracy is (1), (3), (2). Typical norms would look like
             #
-            #     ||u - u_1 || = 1.726432e-02
-            #     ||u - ui_1|| = 2.720805e+00
-            #     ||u - u_e || = 5.921522e-02
+            #     ||u - u0 || = 1.726432e-02
+            #     ||u - ui0|| = 2.720805e+00
+            #     ||u - u_e|| = 5.921522e-02
             #
-            # Hence, use u_1 as initial guess.
-            ui.assign(u[0])
+            # Hence, use u0 as initial guess.
+            ui.assign(u0)
 
             # Wrap the solution in a try-catch block to make sure we call end()
             # if necessary.
@@ -271,26 +269,28 @@ class PressureProjection(object):
                     # 'nonlinear_solver': 'snes',
                     'nonlinear_solver': 'newton',
                     'newton_solver': {
-                        'maximum_iterations': 5,
+                        'maximum_iterations': 10,
                         'report': True,
-                        'absolute_tolerance': tol,
+                        'absolute_tolerance': 1.0e-9,
                         'relative_tolerance': 0.0,
-                        'linear_solver': 'iterative',
-                        # # The nonlinear term makes the problem generally
-                        # # nonsymmetric.
-                        # 'symmetric': False,
-                        #  If the nonsymmetry is too strong, e.g., if u_1 is
-                        #  large, then AMG preconditioning might not work very
-                        #  well.
-                        'preconditioner': 'ilu',
-                        # 'preconditioner': 'hypre_amg',
-                        'krylov_solver': {
-                            'relative_tolerance': tol,
-                            'absolute_tolerance': 0.0,
-                            'maximum_iterations': 1000,
-                            'monitor_convergence': verbose
-                            }
-                        }})
+                        # 'linear_solver': 'iterative',
+                        # # # The nonlinear term makes the problem generally
+                        # # # nonsymmetric.
+                        # # 'symmetric': False,
+                        # #  If the nonsymmetry is too strong, e.g., if u_1 is
+                        # #  large, then AMG preconditioning might not work very
+                        # #  well.
+                        # 'preconditioner': 'ilu',
+                        # # 'preconditioner': 'hypre_amg',
+                        # 'krylov_solver': {
+                        #     'relative_tolerance': tol,
+                        #     'absolute_tolerance': 0.0,
+                        #     'maximum_iterations': 1000,
+                        #     'monitor_convergence': verbose
+                        #     }
+                        }
+                   }
+                )
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
         with Message('Computing pressure correction'):
             #
@@ -326,8 +326,8 @@ class PressureProjection(object):
             # specify Dirichlet pressure conditions.
             #
             rotational_form = False
-            self._pressure_poisson(
-                    p1, p0,
+            p1 = self._pressure_poisson(
+                    p0,
                     self.mu, ui,
                     divu=Constant(self.rho/dt)*div(ui),
                     p_bcs=p_bcs,
@@ -335,13 +335,6 @@ class PressureProjection(object):
                     tol=tol,
                     verbose=verbose
                     )
-            # plot(p - phi, title='p-phi')
-            # plot(ui, title='u intermediate')
-            # plot(f, title='f')
-            # #plot(ui[1], title='u intermediate[1]')
-            # plot(div(ui), title='div(u intermediate)')
-            # plot(phi, title='phi')
-            # interactive()
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
         # Velocity correction.
         #   U = U0 - dt/rho \nabla p.
@@ -349,7 +342,7 @@ class PressureProjection(object):
             u2 = TrialFunction(self.W)
             a3 = inner(u2, v) * dx
             if p0:
-                phi = Function(self.P)
+                phi = Function(p0.function_space())
                 phi.assign(p1)
                 phi -= p0
             else:
@@ -358,7 +351,7 @@ class PressureProjection(object):
                 phi += self.mu * div(ui)
             L3 = inner(ui,  v) * dx \
                 - k/self.rho * inner(grad(phi), v) * dx
-            solve(a3 == L3, u1,
+            solve(a3 == L3, u0,
                   bcs=u_bcs,
                   solver_parameters={
                       'linear_solver': 'iterative',
@@ -385,11 +378,12 @@ class PressureProjection(object):
         #       )
         # plot(div_u, title='div(u)')
         # interactive()
-        return
+        p0.assign(p1)
+        return u0, p0
 
     def _pressure_poisson(
             self,
-            p1, p0,
+            p0,
             mu, ui,
             divu,
             p_bcs=None,
@@ -407,12 +401,15 @@ class PressureProjection(object):
 
             \nabla p = u.
         '''
-        P = p1.function_space()
+        P = p0.function_space()
+
+        p1 = Function(P)
         p = TrialFunction(P)
         q = TestFunction(P)
 
         a2 = dot(grad(p), grad(q)) * dx
         L2 = -divu * q * dx
+
         if p0:
             L2 += dot(grad(p0), grad(q)) * dx
         if p_n:
@@ -454,11 +451,11 @@ class PressureProjection(object):
             #
             #    \int div(u) = \int_\Gamma n.u.
             #
-            # The latter term is 0 iff inflow and outflow are exactly the same
-            # at any given point in time. This corresponds with the
-            # incompressibility of the liquid.
+            # The latter term is 0 if and only if inflow and outflow are
+            # exactly the same at any given point in time. This corresponds
+            # with the incompressibility of the liquid.
             #
-            # In turn, this hints towards penetrable boundaries to require
+            # Note that this hints towards penetrable boundaries to require
             # Dirichlet conditions on the pressure.
             #
             A = assemble(a2)
@@ -468,20 +465,45 @@ class PressureProjection(object):
             # might destroy the semidefiniteness needed for CG.
             #
             # The system is consistent, but the matrix has an eigenvalue 0.
-            # This does not harm the convergence of CG, but when
-            # preconditioning one has to take care that the preconditioner
-            # preserves the kernel.  ILU might destroy this (and the
+            # This does not harm the convergence of CG, but with
+            # preconditioning one has to make sure that the preconditioner
+            # preserves the kernel. ILU might destroy this (and the
             # semidefiniteness). With AMG, the coarse grid solves cannot be LU
             # then, so try Jacobi here.
             # <http://lists.mcs.anl.gov/pipermail/petsc-users/2012-February/012139.html>
             #
+
+            # TODO clear everything
+            # <https://fenicsproject.org/qa/12916/clear-petscoptions>
+            # PETScOptions.clear('ksp_view')
+            # PETScOptions.clear('ksp_monitor_true_residual')
+            # PETScOptions.clear('pc_type')
+            # PETScOptions.clear('pc_fieldsplit_type')
+            # PETScOptions.clear('pc_fieldsplit_detect_saddle_point')
+            # PETScOptions.clear('fieldsplit_0_ksp_type')
+            # PETScOptions.clear('fieldsplit_0_pc_type')
+            # PETScOptions.clear('fieldsplit_1_ksp_type')
+            # PETScOptions.clear('fieldsplit_1_pc_type')
+
+            # p = TrialFunction(P)
+            # q = TestFunction(P)
+            # a2 = dot(grad(p), grad(q)) * dx
+            # A = assemble(a2)
+            # from dolfin import project
+            # b = assemble(project(Constant(0.0), P) * q * dx)
+            # p1 = assemble(project(Constant(0.0), P) * q * dx)
+
             prec = PETScPreconditioner('hypre_amg')
-            PETScOptions.set('pc_hypre_boomeramg_relax_type_coarse', 'jacobi')
+            PETScOptions.set(
+                'pc_hypre_boomeramg_relax_type_coarse',
+                'jacobi'
+                )
             solver = PETScKrylovSolver('cg', prec)
             solver.parameters['absolute_tolerance'] = 0.0
-            solver.parameters['relative_tolerance'] = tol
+            solver.parameters['relative_tolerance'] = 1.0e-20
             solver.parameters['maximum_iterations'] = 100
-            solver.parameters['monitor_convergence'] = verbose
+            # TODO reset to verbose
+            solver.parameters['monitor_convergence'] = True
             # Create solver and solve system
             A_petsc = as_backend_type(A)
             b_petsc = as_backend_type(b)
@@ -561,7 +583,7 @@ class PressureProjection(object):
             # else:
             #     exit()
             #     raise RuntimeError('Linear system failed to converge.')
-        return
+        return p1
 
 
 class IPCS(PressureProjection):
@@ -574,10 +596,6 @@ class IPCS(PressureProjection):
         'pressure': 1,
         }
 
-    def __init__(self, W, P, rho, mu, theta,
-                 stabilization=False
-                 ):
-        super(IPCS, self).__init__(
-                W, P, rho, mu, theta, stabilization=stabilization
-                )
+    def __init__(self, W, P, rho, mu, theta):
+        super(IPCS, self).__init__(W, P, rho, mu, theta)
         return
