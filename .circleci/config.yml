@@ -10,8 +10,8 @@ jobs:
       - run: apt-get update
       - run: apt-get install -y git gmsh
       - run: sudo -H pip2 install -U pytest pytest-cov
-      - run: sudo -H pip2 install -r test_requirements.txt
       - checkout
+      - run: sudo -H pip2 install -r test_requirements.txt
       # The actual test
       - run: PYTHONPATH=$PWD:$PYTHONPATH pytest --cov flow
       # submit to codecov
