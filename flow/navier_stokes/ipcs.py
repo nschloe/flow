@@ -143,7 +143,11 @@ class PressureProjection(object):
         if isinstance(rho, float):
             assert rho > 0.0
         else:
-            assert rho.vector().min() > 0.0
+            try:
+                assert rho.vector().min() > 0.0
+            except AttributeError:
+                # AttributeError: 'Sum' object has no attribute 'vector'
+                pass
 
         self.theta = theta
         self.rho = rho
