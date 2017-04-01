@@ -3,8 +3,8 @@
 import flow
 
 from dolfin import (
-        Mesh, SubDomain, FunctionSpace, DOLFIN_EPS, Expression, DirichletBC,
-        VectorElement, FiniteElement, Constant, plot
+        Mesh, SubDomain, FunctionSpace, Expression, DirichletBC, VectorElement,
+        FiniteElement, Constant, plot
         )
 import materials
 import meshio
@@ -28,14 +28,16 @@ def create_mesh(lcar):
         holes=[circle]
         )
 
-    return pygmsh.generate_mesh(geom)
+    points, cells, point_data, cell_data, field_data = \
+        pygmsh.generate_mesh(geom)
+
+    # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
+    meshio.write('test.xml', points, cells)
+    return Mesh('test.xml')
 
 
 def test_karman(num_steps=2, show=False):
-    points, cells, point_data, cell_data, field_data = create_mesh(lcar=0.1)
-    # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
-    meshio.write('test.xml', points, cells)
-    mesh = Mesh('test.xml')
+    mesh = create_mesh(lcar=0.1)
 
     W_element = VectorElement('Lagrange', mesh.ufl_cell(), 2)
     P_element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
@@ -71,8 +73,8 @@ def test_karman(num_steps=2, show=False):
         def inside(self, x, on_boundary):
             return (
                 on_boundary
-                and x[0] > x0 + DOLFIN_EPS and x[0] < x1 - mesh_eps
-                and x[1] > y0 + DOLFIN_EPS and x[1] < y1 - mesh_eps
+                and x0 + mesh_eps < x[0] < x1 - mesh_eps
+                and y0 + mesh_eps < x[1] < y1 - mesh_eps
                 )
     obstacle_boundary = ObstacleBoundary()
 
@@ -142,16 +144,11 @@ def test_karman(num_steps=2, show=False):
         max_iter=1000
         )
 
+    rho = materials.water.density(T=293.0)
+    stepper = flow.navier_stokes.IPCS(rho, mu, theta=1.0)
+
     W2 = u0.function_space()
     P2 = p0.function_space()
-
-    rho = materials.water.density(T=293.0)
-    stepper = flow.navier_stokes.IPCS(
-            W2, P2,
-            rho, mu,
-            theta=1.0
-            )
-
     u_bcs = [
         DirichletBC(W2, (0.0, 0.0), upper_boundary),
         DirichletBC(W2, (0.0, 0.0), lower_boundary),

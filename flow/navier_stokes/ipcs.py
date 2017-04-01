@@ -130,14 +130,6 @@ def _rhs_weak(u, v, f, rho, mu):
         )
 
 
-def _rhs_strong(u, f, rho, mu):
-    '''Right-hand side of the Navier--Stokes momentum equation in strong form.
-    '''
-    return f \
-        - mu * div(grad(u)) \
-        - rho * (grad(u)*u + 0.5*div(u)*u)
-
-
 class PressureProjection(object):
     '''General pressure projection scheme as described in section 3.4 of
 
@@ -145,12 +137,7 @@ class PressureProjection(object):
         Guermond, Miev, Shen;
         Comput. Methods Appl. Mech. Engrg. 195 (2006).
     '''
-    def __init__(
-            self,
-            W, P,
-            rho, mu,
-            theta
-            ):
+    def __init__(self, rho, mu, theta):
         assert mu > 0.0
         # Only works for linear elements.
         if isinstance(rho, float):
@@ -159,8 +146,6 @@ class PressureProjection(object):
             assert rho.vector().min() > 0.0
 
         self.theta = theta
-        self.W = W
-        self.P = P
         self.rho = rho
         self.mu = mu
         return
@@ -278,8 +263,8 @@ class PressureProjection(object):
                         # # # nonsymmetric.
                         # # 'symmetric': False,
                         # #  If the nonsymmetry is too strong, e.g., if u_1 is
-                        # #  large, then AMG preconditioning might not work very
-                        # #  well.
+                        # #  large, then AMG preconditioning might not work
+                        # #  very well.
                         # 'preconditioner': 'ilu',
                         # # 'preconditioner': 'hypre_amg',
                         # 'krylov_solver': {
@@ -339,7 +324,7 @@ class PressureProjection(object):
         # Velocity correction.
         #   U = U0 - dt/rho \nabla p.
         with Message('Computing velocity correction'):
-            u2 = TrialFunction(self.W)
+            u2 = TrialFunction(u0.function_space())
             a3 = inner(u2, v) * dx
             if p0:
                 phi = Function(p0.function_space())
@@ -596,6 +581,6 @@ class IPCS(PressureProjection):
         'pressure': 1,
         }
 
-    def __init__(self, W, P, rho, mu, theta):
-        super(IPCS, self).__init__(W, P, rho, mu, theta)
+    def __init__(self, rho, mu, theta):
+        super(IPCS, self).__init__(rho, mu, theta)
         return

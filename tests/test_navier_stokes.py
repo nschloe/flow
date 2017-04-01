@@ -271,7 +271,6 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
         W = VectorFunctionSpace(mesh, 'CG', 2)
         P = FunctionSpace(mesh, 'CG', 1)
         method = MethodClass(
-                W, P,
                 rho, mu,
                 theta=1.0,
                 # theta=0.5,
