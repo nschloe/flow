@@ -318,7 +318,7 @@ class PressureProjection(object):
             p1 = self._pressure_poisson(
                     p0,
                     self.mu, ui,
-                    divu=Constant(self.rho/dt)*div(ui),
+                    divu=self.rho / Constant(dt) * div(ui),
                     p_bcs=p_bcs,
                     rotational_form=rotational_form,
                     tol=tol,
@@ -489,10 +489,9 @@ class PressureProjection(object):
                 )
             solver = PETScKrylovSolver('cg', prec)
             solver.parameters['absolute_tolerance'] = 0.0
-            solver.parameters['relative_tolerance'] = 1.0e-20
+            solver.parameters['relative_tolerance'] = tol
             solver.parameters['maximum_iterations'] = 100
-            # TODO reset to verbose
-            solver.parameters['monitor_convergence'] = True
+            solver.parameters['monitor_convergence'] = verbose
             # Create solver and solve system
             A_petsc = as_backend_type(A)
             b_petsc = as_backend_type(b)
