@@ -15,6 +15,7 @@ import materials
 import meshio
 import parabolic
 import pygmsh
+import time
 
 
 def create_mesh(lcar):
@@ -94,30 +95,46 @@ class Heat(object):
     def eval_alpha_M_beta_F(self, alpha, beta, u, t):
         # Evaluate  alpha * M * u + beta * F(u, t).
         v = TestFunction(self.V)
-        F = (
-            + alpha * u * v * dx
-            + beta * (
-                - dot(self.conv, grad(u)) * v * dx
-                - self.kappa
-                    * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
-                )
+
+        f1 = assemble(
+            u * v * dx,
+            form_compiler_parameters={
+                'quadrature_rule': 'vertex',
+                'quadrature_degree': 1
+                }
             )
-        return assemble(F)
+        f2 = assemble(
+            - dot(self.conv, grad(u)) * v * dx
+            - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
+            )
+        f = alpha * f1 + beta * f2
+
+        return f
 
     def solve_alpha_M_beta_F(self, alpha, beta, b, t):
         # Solve  alpha * M * u + beta * F(u, t) = b  for u.
         u = TrialFunction(self.V)
         v = TestFunction(self.V)
-        F = (
-            + alpha * u * v * dx
-            + beta * (
-                - dot(self.conv, grad(u)) * v * dx
-                - self.kappa
-                    * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
-                )
-            )
 
-        A = assemble(F)
+        # If there are sharp temperature gradients, numerical oscillations may
+        # occur. This happens because the resulting matrix is not an M-matrix,
+        # caused by the fact that A1 puts positive elements in places other
+        # than the main diagonal. To prevent that, it is suggested by
+        # Großmann/Roos to use a vertex-centered discretization for the mass
+        # matrix part.
+        A1 = assemble(
+            u * v * dx,
+            form_compiler_parameters={
+                'quadrature_rule': 'vertex',
+                'quadrature_degree': 1
+                }
+            )
+        A2 = assemble(
+            - dot(self.conv, grad(u)) * v * dx
+            - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
+            )
+        A = alpha * A1 + beta * A2
+
         for bc in self.bcs:
             bc.apply(A, b)
 
@@ -213,6 +230,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                     )
                 )
         theta = stepper.step(theta0, t, dt)
+        end()
 
         # Do one Navier-Stokes time step.
         begin('Computing flux and pressure...')
@@ -225,7 +243,6 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
 
-        import time
         start_time = time.time()
         try:
             u, p = stepper.step(
@@ -260,8 +277,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         end()
 
         # Assigning and plotting. We do that here so all methods have access
-        # to `x` and `x_1` (necessary, for example, for Crank-Nicolson in
-        # Navier-Stokes).
+        # to `x` and `x_1`.
         theta0.assign(theta)
         u0.assign(u)
         p0.assign(p)
