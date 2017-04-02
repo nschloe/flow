@@ -9,7 +9,7 @@ import flow
 from dolfin import (
         begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
         FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
-        TestFunction, TrialFunction, Function, assemble, KrylovSolver
+        TestFunction, TrialFunction, Function, assemble, KrylovSolver, XDMFFile
         )
 import materials
 import meshio
@@ -37,9 +37,6 @@ def create_mesh(lcar):
     points, cells, point_data, cell_data, field_data = \
         pygmsh.generate_mesh(geom)
 
-    # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
-    meshio.write('test.xml', points, cells)
-
     mesh_eps = 1.0e-12
 
     class HotBoundary(SubDomain):
@@ -58,10 +55,12 @@ def create_mesh(lcar):
                     x[0] < x0 + mesh_eps or
                     x[0] > x1 - mesh_eps or
                     x[1] < y0 + mesh_eps or
-                    x[1] < y1 - mesh_eps
+                    x[1] > y1 - mesh_eps
                     ))
     cool_boundary = CoolBoundary()
 
+    # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
+    meshio.write('test.xml', points, cells)
     return Mesh('test.xml'), hot_boundary, cool_boundary
 
 
@@ -126,7 +125,7 @@ class Heat(object):
         solver.parameters['relative_tolerance'] = 1.0e-13
         solver.parameters['absolute_tolerance'] = 0.0
         solver.parameters['maximum_iterations'] = 100
-        solver.parameters['monitor_convergence'] = True
+        solver.parameters['monitor_convergence'] = False
         solver.set_operator(A)
 
         u = Function(self.V)
@@ -137,10 +136,12 @@ class Heat(object):
 def test_boussinesq(target_time=0.1, lcar=0.1):
     mesh, hot_boundary, cool_boundary = create_mesh(lcar)
 
+    room_temp = 293.0
+
     # Density depends on temperature.
     rho = materials.water.density
     # Take dynamic viscosity at room temperature.
-    mu = materials.water.dynamic_viscosity(293.0)
+    mu = materials.water.dynamic_viscosity(room_temp)
     cp = materials.water.specific_heat_capacity
     kappa = materials.water.thermal_conductivity
 
@@ -152,7 +153,6 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
     # dt0 = 0.2 * mesh.hmin() / umax
     t = 0.0
 
-    room_temp = 293.0
     max_heater_temp = 380.0
 
     # Gravity force.
@@ -179,10 +179,14 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         )
 
     # Everything at room temperature for starters
-    theta0 = project(Constant(293.0), Q)
+    theta0 = project(Constant(room_temp), Q)
 
     # div_u = Function(Q)
     dt = dt0
+
+    theta_file = XDMFFile('temperature.xdmf')
+    theta_file.parameters['flush_output'] = True
+    theta_file.parameters['rewrite_function_mesh'] = False
 
     while t < target_time + DOLFIN_EPS:
         begin('Time step %e -> %e...' % (t, t+dt))
@@ -199,11 +203,14 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         begin('Computing heat...')
         heat_bcs = [
             DirichletBC(Q, heater_temp, hot_boundary),
-            DirichletBC(Q, 293.0, cool_boundary),
+            DirichletBC(Q, room_temp, cool_boundary),
             ]
         # Use all quanities at room temperature to avoid nonlinearity
         stepper = parabolic.ImplicitEuler(
-                Heat(Q, u0, kappa(293.0), rho(293.0), cp(293.0), heat_bcs)
+                Heat(
+                    Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
+                    heat_bcs
+                    )
                 )
         theta = stepper.step(theta0, t, dt)
 
@@ -258,6 +265,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         theta0.assign(theta)
         u0.assign(u)
         p0.assign(p)
+
+        # write to file
+        theta_file.write(theta0, t)
 
         # Adaptive stepsize control based solely on the velocity field.
         # CFL-like condition for time step. This should be some sort of average
