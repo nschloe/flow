@@ -9,13 +9,12 @@ import flow
 from dolfin import (
         begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
         FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
-        TestFunction, TrialFunction, Function, assemble, KrylovSolver, XDMFFile
+        TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver
         )
 import materials
 import meshio
 import parabolic
 import pygmsh
-import time
 
 
 def create_mesh(lcar):
@@ -92,10 +91,13 @@ class Heat(object):
         self.bcs = bcs
         return
 
-    def eval_alpha_M_beta_F(self, alpha, beta, u, t):
-        # Evaluate  alpha * M * u + beta * F(u, t).
-        v = TestFunction(self.V)
-
+    def _get_system(self, alpha, beta, u, v):
+        # If there are sharp temperature gradients, numerical oscillations may
+        # occur. This happens because the resulting matrix is not an M-matrix,
+        # caused by the fact that A1 puts positive elements in places other
+        # than the main diagonal. To prevent that, it is suggested by
+        # Großmann/Roos to use a vertex-centered discretization for the mass
+        # matrix part.
         f1 = assemble(
             u * v * dx,
             form_compiler_parameters={
@@ -107,42 +109,30 @@ class Heat(object):
             - dot(self.conv, grad(u)) * v * dx
             - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
             )
-        f = alpha * f1 + beta * f2
+        return alpha * f1 + beta * f2
 
-        return f
+    def eval_alpha_M_beta_F(self, alpha, beta, u, t):
+        # Evaluate  alpha * M * u + beta * F(u, t).
+        v = TestFunction(self.V)
+        return self._get_system(alpha, beta, u, v)
 
     def solve_alpha_M_beta_F(self, alpha, beta, b, t):
         # Solve  alpha * M * u + beta * F(u, t) = b  for u.
         u = TrialFunction(self.V)
         v = TestFunction(self.V)
-
-        # If there are sharp temperature gradients, numerical oscillations may
-        # occur. This happens because the resulting matrix is not an M-matrix,
-        # caused by the fact that A1 puts positive elements in places other
-        # than the main diagonal. To prevent that, it is suggested by
-        # Großmann/Roos to use a vertex-centered discretization for the mass
-        # matrix part.
-        A1 = assemble(
-            u * v * dx,
-            form_compiler_parameters={
-                'quadrature_rule': 'vertex',
-                'quadrature_degree': 1
-                }
-            )
-        A2 = assemble(
-            - dot(self.conv, grad(u)) * v * dx
-            - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
-            )
-        A = alpha * A1 + beta * A2
+        A = self._get_system(alpha, beta, u, v)
 
         for bc in self.bcs:
             bc.apply(A, b)
 
-        solver = KrylovSolver('gmres', 'ilu')
-        solver.parameters['relative_tolerance'] = 1.0e-13
-        solver.parameters['absolute_tolerance'] = 0.0
-        solver.parameters['maximum_iterations'] = 100
-        solver.parameters['monitor_convergence'] = False
+        # solver = KrylovSolver('gmres', 'ilu')
+        # solver.parameters['relative_tolerance'] = 1.0e-13
+        # solver.parameters['absolute_tolerance'] = 0.0
+        # solver.parameters['maximum_iterations'] = 1000
+        # solver.parameters['monitor_convergence'] = True
+
+        # The Krylov solver doesn't converge
+        solver = LUSolver()
         solver.set_operator(A)
 
         u = Function(self.V)
@@ -214,7 +204,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             + room_temp
             + min(1.0, t/t1) * (max_heater_temp - room_temp)
             )
-        # heater_temp = max_heater_temp
+        # heater_temp = room_temp
 
         # Do one heat time step.
         begin('Computing heat...')
@@ -235,7 +225,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         # Do one Navier-Stokes time step.
         begin('Computing flux and pressure...')
         stepper = flow.navier_stokes.IPCS(
-                rho(theta), mu,
+                # TODO take rho(theta)?
+                rho(293.0), mu,
                 theta=1.0  # fully implicit step
                 )
 
@@ -243,14 +234,17 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
 
-        start_time = time.time()
+        from dolfin import plot, interactive
+        plot(theta, title='theta')
+        interactive()
+
         try:
             u, p = stepper.step(
                     dt,
                     u0, p0,
                     u_bcs, p_bcs,
-                    f0=g,
-                    f1=g,
+                    # f0=g,
+                    f1=rho(theta) * g,
                     verbose=False,
                     tol=1.0e-10
                     )
@@ -265,8 +259,6 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             end()
             end()
             continue
-        elapsed_time = time.time() - start_time
-        print('elapsed: %e' % elapsed_time)
 
         # u = TrialFunction(Q)
         # v = TestFunction(Q)
@@ -284,6 +276,12 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
         # write to file
         theta_file.write(theta0, t)
+
+        from dolfin import plot, interactive
+        plot(theta0, title='theta')
+        plot(u0, title='u')
+        plot(p0, title='p')
+        interactive()
 
         # Adaptive stepsize control based solely on the velocity field.
         # CFL-like condition for time step. This should be some sort of average

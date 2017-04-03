@@ -61,8 +61,8 @@ def _rhs_weak(u, v, f, rho, mu):
     #
     #     1/2 (<(u.\nabla)u, w> - <(u.\nabla)w, u>).
     #
-    # One distinct advantage of this formulation is that here, the convective
-    # term doesn't contribute to the total energy of the system since
+    # One distinct advantage of this formulation is that the convective term
+    # doesn't contribute to the total energy of the system since
     #
     # d/dt ||u||^2 = 2<d_t u, u>  = <(u.\nabla)u, u> - <(u.\nabla)u, u> = 0.
     #
@@ -72,7 +72,7 @@ def _rhs_weak(u, v, f, rho, mu):
     #     <http://calcul.math.cnrs.fr/Documents/Ecoles/CEMRACS2012/Julius_Reiss.pdf>.
     #
     # The first lecture is quite instructive and gives info on other
-    # possibilties, e.g.,
+    # possibilities, e.g.,
     #
     #   * Rotational form
     #     <http://www.igpm.rwth-aachen.de/Download/reports/DROPS/IGPM193.pdf>
@@ -84,11 +84,10 @@ def _rhs_weak(u, v, f, rho, mu):
     #
     # The different methods are numerically compared in
     #
-    #     On the accuracy of the rotation form in simulations
-    #     of the Navier-Stokes equations;
+    #     On the accuracy of the rotation form in simulations of the
+    #     Navier-Stokes equations;
     #     Layton et al.;
-    #
-    #     <http://www.mathcs.emory.edu/~molshan/ftp/pub/RotationForm.pdf>
+    #     <http://www.mathcs.emory.edu/~molshan/ftp/pub/RotationForm.pdf>.
     #
     # In
     #
@@ -123,7 +122,7 @@ def _rhs_weak(u, v, f, rho, mu):
     # where more details on SUPG are given.
     #
     return (
-        dot(f, v) * dx
+        inner(f, v) * dx
         - mu * inner(grad(u), grad(v)) * dx
         - rho * 0.5 * (inner(grad(u)*u, v) - inner(grad(v)*u, u)) * dx
         # - rho*inner(grad(u)*u, v) * dx
@@ -249,7 +248,7 @@ class PressureProjection(object):
             # Wrap the solution in a try-catch block to make sure we call end()
             # if necessary.
             # problem = NonlinearVariationalProblem(F1, ui, u_bcs, J)
-            # solver  = NonlinearVariationalSolver(problem)
+            # solver = NonlinearVariationalSolver(problem)
             solve(
                 F1 == 0, ui,
                 bcs=u_bcs,
