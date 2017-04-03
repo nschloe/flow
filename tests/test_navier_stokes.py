@@ -225,7 +225,7 @@ def problem_taylor():
     return mesh_generator, solution, f, mu, rho, cell_type
 
 
-def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
+def compute_time_errors(problem, method, mesh_sizes, Dt):
 
     mesh_generator, solution, f, mu, rho, cell_type = problem()
 
@@ -277,11 +277,6 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
         mesh_area = assemble(1.0 * dx(mesh))
         W = VectorFunctionSpace(mesh, 'CG', 2)
         P = FunctionSpace(mesh, 'CG', 1)
-        method = MethodClass(
-                rho, mu,
-                # theta=1.0,
-                # theta=0.5,
-                )
         u1 = Function(W)
         p1 = Function(P)
         err_p = Function(P)
@@ -307,7 +302,8 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
                     dt,
                     u0, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
-                    # f0=fenics_rhs0,
+                    rho=rho, mu=mu,
+                    f0=fenics_rhs0,
                     f1=fenics_rhs1,
                     verbose=False,
                     tol=1.0e-10
@@ -381,7 +377,7 @@ def test_chorin(problem, tol=1.0e-10):
     Dt = [1.0e-3, 0.5e-3]
     mesh_sizes = [16, 32]
     assert_time_order(
-            problem, navsto.Chorin, tol=tol,
+            problem, navsto.Chorin(), tol=tol,
             Dt=Dt,
             mesh_sizes=mesh_sizes
             )
@@ -395,17 +391,17 @@ def test_chorin(problem, tol=1.0e-10):
     # problem_taylor,
     ])
 def test_ipcs(problem, tol=1.0e-10):
-    assert_time_order(problem, navsto.IPCS, tol)
+    assert_time_order(problem, navsto.IPCS(theta=1.0), tol)
     return
 
 
 def assert_time_order(
-        problem, method_class,
+        problem, method,
         tol=1.0e-10,
         mesh_sizes=[8, 16, 32],
         Dt=[0.5**k for k in range(2)]
         ):
-    errors = compute_time_errors(problem, method_class, mesh_sizes, Dt)
+    errors = compute_time_errors(problem, method, mesh_sizes, Dt)
     orders = {
         key: compute_numerical_order_of_convergence(Dt, errors[key].T).T
         for key in errors
@@ -476,13 +472,13 @@ if __name__ == '__main__':
     Dt = [0.5**k for k in range(10)]
     errors = compute_time_errors(
         # problem_flat,
-        problem_whirl,
+        # problem_whirl,
         # problem_guermond1,
-        # problem_guermond2,
+        problem_guermond2,
         # problem_taylor,
         #
-        navsto.Chorin,
-        # navsto.IPCS,
+        navsto.Chorin(),
+        # navsto.IPCS(theta=1.0),
         mesh_sizes, Dt
         )
     show_timeorder_info(Dt, mesh_sizes, errors)

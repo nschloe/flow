@@ -227,8 +227,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         begin('Computing flux and pressure...')
         stepper = flow.navier_stokes.IPCS(
                 # TODO take rho(theta)?
-                rho(293.0), mu,
-                theta=1.0  # fully implicit step
+                rho(293.0), mu
                 )
         W = u0.function_space()
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
