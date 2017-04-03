@@ -80,7 +80,13 @@ def problem_flat():
     cell_type = triangle
     x = sympy.DeferredVector('x')
     u = (0.0 * x[0], 0.0 * x[1])
-    p = -9.81 * x[1]
+
+    # Only grad(p) is of physical significance, and the numerical procedure
+    # chooses p such that int(p) = 0. Also, numerical solutions have n.grad(p)
+    # = 0 for non-penetration boundaries.  Make sure that the exact solution
+    # respects those things to make error analysis easier.
+    p = sympy.cos(pi * x[1])
+
     solution = {
         'u': {'value': u, 'degree': 1},
         'p': {'value': p, 'degree': 1},
@@ -163,18 +169,19 @@ def problem_guermond2():
         <http://www.sciencedirect.com/science/article/pii/S0045782505004640>.
     '''
     def mesh_generator(n):
-        return RectangleMesh(Point(0, 0), Point(1, 1), n, n, 'crossed')
+        return UnitSquareMesh(n, n, 'crossed')
     cell_type = triangle
     x = sympy.DeferredVector('x')
     t = sympy.symbols('t')
-    u = (sympy.sin(x[0] + t) * sympy.sin(x[1] + t),
-         sympy.cos(x[0] + t) * sympy.cos(x[1] + t)
-         )
+    u = (
+        sympy.sin(x[0] + t) * sympy.sin(x[1] + t),
+        sympy.cos(x[0] + t) * sympy.cos(x[1] + t)
+        )
     p = sympy.sin(x[0] - x[1] + t)
     solution = {
-            'u': {'value': u, 'degree': MAX_DEGREE},
-            'p': {'value': p, 'degree': MAX_DEGREE},
-            }
+        'u': {'value': u, 'degree': MAX_DEGREE},
+        'p': {'value': p, 'degree': MAX_DEGREE},
+        }
     f = {
         'value': _get_navier_stokes_rhs(u, p),
         'degree': MAX_DEGREE,
@@ -272,7 +279,7 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
         P = FunctionSpace(mesh, 'CG', 1)
         method = MethodClass(
                 rho, mu,
-                theta=1.0,
+                # theta=1.0,
                 # theta=0.5,
                 )
         u1 = Function(W)
@@ -293,7 +300,6 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
             u_bcs = [DirichletBC(W, sol_u, 'on_boundary')]
             sol_p.t = dt
             p0 = project(p, P)
-            # p_bcs = [DirichletBC(P, sol_p, 'on_boundary')]
             p_bcs = []
             fenics_rhs0.t = 0.0
             fenics_rhs1.t = dt
@@ -301,10 +307,21 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
                     dt,
                     u0, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
-                    f0=fenics_rhs0, f1=fenics_rhs1,
+                    # f0=fenics_rhs0,
+                    f1=fenics_rhs1,
                     verbose=False,
                     tol=1.0e-10
                     )
+
+            # plot(sol_u, mesh=mesh, title='u_sol')
+            # plot(sol_p, mesh=mesh, title='p_sol')
+            # plot(u1, title='u')
+            # plot(p1, title='p')
+            # from dolfin import div
+            # plot(div(u1), title='div(u)')
+            # plot(p1 - sol_p, title='p_h - p')
+            # interactive()
+
             sol_u.t = dt
             sol_p.t = dt
             errors['u'][k][j] = errornorm(sol_u, u1)
@@ -353,19 +370,41 @@ def compute_time_errors(problem, MethodClass, mesh_sizes, Dt):
     return errors
 
 
-# TODO add test for spatial order
+@pytest.mark.parametrize('problem', [
+    problem_flat,
+    # problem_whirl,
+    problem_guermond1,
+    problem_guermond2,
+    # problem_taylor,
+    ])
+def test_chorin(problem, tol=1.0e-10):
+    Dt = [1.0e-3, 0.5e-3]
+    mesh_sizes = [16, 32]
+    assert_time_order(
+            problem, navsto.Chorin, tol=tol,
+            Dt=Dt,
+            mesh_sizes=mesh_sizes
+            )
+    return
+
+
 @pytest.mark.parametrize('problem', [
     # problem_flat,
     # problem_whirl,
     problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('method_class', [
-    navsto.IPCS
-    ])
-def test_time_order(problem, method_class, tol=1.0e-10):
-    mesh_sizes = [8, 16, 32]
-    Dt = [0.5**k for k in range(2)]
+def test_ipcs(problem, tol=1.0e-10):
+    assert_time_order(problem, navsto.IPCS, tol)
+    return
+
+
+def assert_time_order(
+        problem, method_class,
+        tol=1.0e-10,
+        mesh_sizes=[8, 16, 32],
+        Dt=[0.5**k for k in range(2)]
+        ):
     errors = compute_time_errors(problem, method_class, mesh_sizes, Dt)
     orders = {
         key: compute_numerical_order_of_convergence(Dt, errors[key].T).T
@@ -437,11 +476,13 @@ if __name__ == '__main__':
     Dt = [0.5**k for k in range(10)]
     errors = compute_time_errors(
         # problem_flat,
-        # problem_whirl,
+        problem_whirl,
         # problem_guermond1,
-        problem_guermond2,
+        # problem_guermond2,
         # problem_taylor,
-        navsto.IPCS,
+        #
+        navsto.Chorin,
+        # navsto.IPCS,
         mesh_sizes, Dt
         )
     show_timeorder_info(Dt, mesh_sizes, errors)

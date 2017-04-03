@@ -9,7 +9,8 @@ import flow
 from dolfin import (
         begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
         FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
-        TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver
+        TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver,
+        div
         )
 import materials
 import meshio
@@ -229,15 +230,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 rho(293.0), mu,
                 theta=1.0  # fully implicit step
                 )
-
         W = u0.function_space()
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
-
-        from dolfin import plot, interactive
-        plot(theta, title='theta')
-        interactive()
-
         try:
             u, p = stepper.step(
                     dt,
@@ -259,13 +254,6 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             end()
             end()
             continue
-
-        # u = TrialFunction(Q)
-        # v = TestFunction(Q)
-        # solve(u*v*dx == div(u)*v*dx, div_u)
-        # div_u.assign(div(u0))
-        # plot(div_u, title='div(u)', rescale=True)
-        # interactive()
         end()
 
         # Assigning and plotting. We do that here so all methods have access
@@ -280,6 +268,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         from dolfin import plot, interactive
         plot(theta0, title='theta')
         plot(u0, title='u')
+        plot(div(u), title='div(u)', rescale=True)
         plot(p0, title='p')
         interactive()
 

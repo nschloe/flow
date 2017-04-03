@@ -33,7 +33,7 @@ def _rhs_weak(u, v, f, rho, mu):
     '''
     # Do no include the boundary term
     #
-    #   - mu *inner(grad(u2)*n, v) * ds.
+    #   - mu * inner(grad(u)*n, v) * ds.
     #
     # This effectively means that at all boundaries where no sufficient
     # Dirichlet-conditions are posed, we assume grad(u)*n to vanish.
@@ -68,7 +68,12 @@ def _rhs_weak(u, v, f, rho, mu):
     #
     # More references and info on skew-symmetry can be found in
     #
+    #     Finite Element Methods for the Simulation of Incompressible Flows,
+    #     Volker John,
     #     <http://www.wias-berlin.de/people/john/lectures_madrid_2012.pdf>,
+    #
+    # and
+    #
     #     <http://calcul.math.cnrs.fr/Documents/Ecoles/CEMRACS2012/Julius_Reiss.pdf>.
     #
     # The first lecture is quite instructive and gives info on other
@@ -134,7 +139,8 @@ class PressureProjection(object):
 
         An overview of projection methods for incompressible flows;
         Guermond, Miev, Shen;
-        Comput. Methods Appl. Mech. Engrg. 195 (2006).
+        Comput. Methods Appl. Mech. Engrg. 195 (2006),
+        <http://www.math.tamu.edu/~guermond/PUBLICATIONS/guermond_minev_shen_CMAME_2006.pdf>.
     '''
     def __init__(self, rho, mu, theta):
         assert mu > 0.0
@@ -245,8 +251,6 @@ class PressureProjection(object):
             # Hence, use u0 as initial guess.
             ui.assign(u0)
 
-            # Wrap the solution in a try-catch block to make sure we call end()
-            # if necessary.
             # problem = NonlinearVariationalProblem(F1, ui, u_bcs, J)
             # solver = NonlinearVariationalSolver(problem)
             solve(
@@ -583,6 +587,6 @@ class IPCS(PressureProjection):
         'pressure': 1,
         }
 
-    def __init__(self, rho, mu, theta):
+    def __init__(self, rho, mu, theta=1.0):
         super(IPCS, self).__init__(rho, mu, theta)
         return
