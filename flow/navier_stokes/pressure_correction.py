@@ -22,9 +22,8 @@ from ..message import Message
 
 from dolfin import (
     dot, inner, grad, dx, div, Function, TestFunction, solve, Constant,
-    DOLFIN_EPS, derivative, TrialFunction, FacetNormal, assemble, ds,
-    PETScPreconditioner, PETScKrylovSolver, as_backend_type,
-    PETScOptions
+    DOLFIN_EPS, derivative, TrialFunction, assemble, PETScPreconditioner,
+    PETScKrylovSolver, as_backend_type, PETScOptions
     )
 
 
@@ -150,9 +149,9 @@ def _pressure_poisson(
         - \Delta phi = -div(u),
         boundary conditions,
 
-    for
+    for p with
 
-        \nabla p = u.
+        \\nabla p = u.
     '''
     if p0:
         P = p0.function_space()
@@ -211,14 +210,44 @@ def _pressure_poisson(
         # the same at any given point in time. This corresponds with the
         # incompressibility of the liquid.
         #
-        # Another lessen from this:
+        # Another lesson from this:
         # If the mesh has penetration boundaries, you either have to specify
         # the normal component of the velocity such that \int(n.u) = 0, or
         # specify Dirichlet conditions for the pressure somewhere.
         #
         A = assemble(a2)
         b = assemble(L2)
+
+        # If the right hand side is flawed (e.g., by round-off errors), then it
+        # may have a component b1 in the direction of the null space,
+        # orthogonal to the image of the operator:
         #
+        #     b = b0 + b1.
+        #
+        # When starting with initial guess x0=0, the minimal achievable
+        # relative tolerance is then
+        #
+        #    min_rel_tol = ||b1|| / ||b||.
+        #
+        # If ||b|| is very small, which is the case when ui is almost
+        # divergence-free, then min_rel_to may be larger than the prescribed
+        # relative tolerance tol. This happens, for example, when the time
+        # steps is very small.
+        # Sanitation of right-hand side is easy with
+        #
+        #     e = Function(P)
+        #     e.interpolate(Constant(1.0))
+        #     evec = e.vector()
+        #     evec /= norm(evec)
+        #     print(b.inner(evec))
+        #     b -= b.inner(evec) * evec
+        #
+        # However it's hard to decide when the right-hand side is inconsistent
+        # because of round-off errors in previous steps, or because the system
+        # is actually inconsistent (insufficient boundary conditions or
+        # something like that). Hence, don't do anything and rather try to
+        # fight the cause for round-off.
+
         # In principle, the ILU preconditioner isn't advised here since it
         # might destroy the semidefiniteness needed for CG.
         #
@@ -243,7 +272,7 @@ def _pressure_poisson(
         solver.parameters['absolute_tolerance'] = 0.0
         solver.parameters['relative_tolerance'] = tol
         solver.parameters['maximum_iterations'] = 1000
-        solver.parameters['monitor_convergence'] = True
+        solver.parameters['monitor_convergence'] = verbose
         solver.parameters['error_on_nonconvergence'] = True
 
         # Create solver and solve system
@@ -252,56 +281,7 @@ def _pressure_poisson(
         p1_petsc = as_backend_type(p1.vector())
         solver.set_operator(A_petsc)
 
-        try:
-            solver.solve(p1_petsc, b_petsc)
-        except RuntimeError as error:
-            # Check if the system is indeed consistent.
-            #
-            # If the right hand side is flawed (e.g., by round-off errors),
-            # then it may have a component b1 in the direction of the null
-            # space, orthogonal to the image of the operator:
-            #
-            #     b = b0 + b1.
-            #
-            # When starting with initial guess x0=0, the minimal achievable
-            # relative tolerance is then
-            #
-            #    min_rel_tol = ||b1|| / ||b||.
-            #
-            # If ||b|| is very small, which is the case when ui is almost
-            # divergence-free, then min_rel_to may be larger than the
-            # prescribed relative tolerance tol.
-            #
-            # Use this as a consistency check, i.e., bail out if
-            #
-            #     tol < min_rel_tol = ||b1|| / ||b||.
-            #
-            # For computing ||b1||, we use the fact that the null space is
-            # one-dimensional, i.e.,  b1 = alpha e,  and
-            #
-            #     e.b = e.(b0 + b1) = e.b1 = alpha ||e||^2,
-            #
-            # so  alpha = e.b/||e||^2  and
-            #
-            #     ||b1|| = |alpha| ||e|| = e.b / ||e||
-            #
-            from dolfin import norm, info
-            e = Function(P)
-            e.interpolate(Constant(1.0))
-            evec = e.vector()
-            evec /= norm(evec)
-            alpha = b.inner(evec)
-            normB = norm(b)
-            info('Linear system convergence failure.')
-            info(error.message)
-            message = (
-                'Linear system not consistent! '
-                '<b,e> = %g, ||b|| = %g, <b,e>/||b|| = %e, tol = %e.'
-                ) \
-                % (alpha, normB, alpha/normB, tol)
-            info(message)
-            info('\int div(u)  =  %e' % assemble(divu * dx))
-            raise
+        solver.solve(p1_petsc, b_petsc)
     return p1
 
 
@@ -361,22 +341,23 @@ def _step(
 
         ui = Function(u0.function_space())
 
-        F1 = rho * inner((ui - u0)/k, v) * dx
+        # F1 is multiplied with the factor k.
+        F1 = rho * inner(ui - u0, v) * dx
 
         if abs(theta) > DOLFIN_EPS:
             # Implicit terms.
             # Implicit schemes need f at target step (f1).
             assert f1 is not None
-            F1 -= theta * _rhs_weak(ui, v, f1, rho, mu)
+            F1 -= k * theta * _rhs_weak(ui, v, f1, rho, mu)
         if abs(1.0 - theta) > DOLFIN_EPS:
             # Explicit terms.
             # Explicit schemes need f at current step (f0).
             assert f0 is not None
-            F1 -= (1.0 - theta) \
+            F1 -= k * (1.0 - theta) \
                 * _rhs_weak(u0, v, f0, rho, mu)
 
         if p0:
-            F1 += inner(grad(p0), v) * dx
+            F1 += k * inner(grad(p0), v) * dx
 
         # if stabilization:
         #     tau = stab.supg2(V.mesh(),
@@ -392,7 +373,7 @@ def _step(
         #     if p_1:
         #         R += grad(p_1)
         #     # TODO use u_1 or ui here?
-        #     F1 += tau * dot(R, grad(v)*u_1) * dx
+        #     F1 += k * tau * dot(R, grad(v)*u_1) * dx
 
         # Get linearization and solve nonlinear system.
         # If the scheme is fully explicit (theta=0.0), then the system is
@@ -429,8 +410,8 @@ def _step(
                 'newton_solver': {
                     'maximum_iterations': 10,
                     'report': True,
-                    'absolute_tolerance': 1.0e-8,
-                    'relative_tolerance': 1.0e-10,
+                    'absolute_tolerance': 1.0e-10,
+                    'relative_tolerance': 0.0,
                     'error_on_nonconvergence': True
                     # 'linear_solver': 'iterative',
                     # # # The nonlinear term makes the problem generally

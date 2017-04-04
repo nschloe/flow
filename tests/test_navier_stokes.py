@@ -469,7 +469,7 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
 
 if __name__ == '__main__':
     mesh_sizes = [8, 16, 32, 64]
-    Dt = [0.5**k for k in range(40)]
+    Dt = [0.5**k for k in range(20)]
     errors = compute_time_errors(
         # problem_flat,
         # problem_whirl,
