@@ -211,8 +211,10 @@ def _pressure_poisson(
         # the same at any given point in time. This corresponds with the
         # incompressibility of the liquid.
         #
-        # Note that this hints towards penetrable boundaries to require
-        # Dirichlet conditions on the pressure.
+        # Another lessen from this:
+        # If the mesh has penetration boundaries, you either have to specify
+        # the normal component of the velocity such that \int(n.u) = 0, or
+        # specify Dirichlet conditions for the pressure somewhere.
         #
         A = assemble(a2)
         b = assemble(L2)
@@ -220,7 +222,7 @@ def _pressure_poisson(
         # In principle, the ILU preconditioner isn't advised here since it
         # might destroy the semidefiniteness needed for CG.
         #
-        # The system is consistent, but the matrix has an eigenvalue 0.  This
+        # The system is consistent, but the matrix has an eigenvalue 0. This
         # does not harm the convergence of CG, but with preconditioning one has
         # to make sure that the preconditioner preserves the kernel. ILU might
         # destroy this (and the semidefiniteness). With AMG, the coarse grid
@@ -228,25 +230,9 @@ def _pressure_poisson(
         # <http://lists.mcs.anl.gov/pipermail/petsc-users/2012-February/012139.html>
         #
 
-        # TODO clear everything
+        # TODO clear everything; possible in FEniCS 2017.1
         # <https://fenicsproject.org/qa/12916/clear-petscoptions>
-        # PETScOptions.clear('ksp_view')
-        # PETScOptions.clear('ksp_monitor_true_residual')
-        # PETScOptions.clear('pc_type')
-        # PETScOptions.clear('pc_fieldsplit_type')
-        # PETScOptions.clear('pc_fieldsplit_detect_saddle_point')
-        # PETScOptions.clear('fieldsplit_0_ksp_type')
-        # PETScOptions.clear('fieldsplit_0_pc_type')
-        # PETScOptions.clear('fieldsplit_1_ksp_type')
-        # PETScOptions.clear('fieldsplit_1_pc_type')
-
-        # p = TrialFunction(P)
-        # q = TestFunction(P)
-        # a2 = dot(grad(p), grad(q)) * dx
-        # A = assemble(a2)
-        # from dolfin import project
-        # b = assemble(project(Constant(0.0), P) * q * dx)
-        # p1 = assemble(project(Constant(0.0), P) * q * dx)
+        # PETScOptions.clear()
 
         prec = PETScPreconditioner('hypre_amg')
         PETScOptions.set(
@@ -256,8 +242,8 @@ def _pressure_poisson(
         solver = PETScKrylovSolver('cg', prec)
         solver.parameters['absolute_tolerance'] = 0.0
         solver.parameters['relative_tolerance'] = tol
-        solver.parameters['maximum_iterations'] = 100
-        solver.parameters['monitor_convergence'] = verbose
+        solver.parameters['maximum_iterations'] = 1000
+        solver.parameters['monitor_convergence'] = True
         solver.parameters['error_on_nonconvergence'] = True
 
         # Create solver and solve system
@@ -266,79 +252,56 @@ def _pressure_poisson(
         p1_petsc = as_backend_type(p1.vector())
         solver.set_operator(A_petsc)
 
-        solver.solve(p1_petsc, b_petsc)
-
-        # # TODO necessary?
-        # # Check if the system is indeed consistent.
-        # #
-        # # If the right hand side is flawed (e.g., by round-off errors),
-        # # then it may have a component b1 in the direction of the null
-        # # space, orthogonal to the image of the operator:
-        # #
-        # #     b = b0 + b1.
-        # #
-        # # When starting with initial guess x0=0, the minimal achievable
-        # # relative tolerance is then
-        # #
-        # #    min_rel_tol = ||b1|| / ||b||.
-        # #
-        # # If ||b|| is very small, which is the case when ui is almost
-        # # divergence-free, then min_rel_to may be larger than the
-        # # prescribed relative tolerance tol.
-        # #
-        # # Use this as a consistency check, i.e., bail out if
-        # #
-        # #     tol < min_rel_tol = ||b1|| / ||b||.
-        # #
-        # # For computing ||b1||, we use the fact that the null space is
-        # # one-dimensional, i.e.,  b1 = alpha e,  and
-        # #
-        # #     e.b = e.(b0 + b1) = e.b1 = alpha ||e||^2,
-        # #
-        # # so  alpha = e.b/||e||^2  and
-        # #
-        # #     ||b1|| = |alpha| ||e|| = e.b / ||e||
-        # #
-        # e = Function(P)
-        # e.interpolate(Constant(1.0))
-        # evec = e.vector()
-        # evec /= norm(evec)
-        # alpha = b.inner(evec)
-        # normB = norm(b)
-        # info('Linear system convergence failure.')
-        # info(error.message)
-        # message = (
-        #     'Linear system not consistent! '
-        #     '<b,e> = %g, ||b|| = %g, <b,e>/||b|| = %e, tol = %e.'
-        #     ) \
-        #     % (alpha, normB, alpha/normB, tol)
-        # info(message)
-        # if tol < abs(alpha) / normB:
-        #     info('\int div(u)  =  %e' % assemble(divu * dx))
-        #     # n = FacetNormal(Q.mesh())
-        #     # info('\int_Gamma n.u = %e' % assemble(dot(n, u)*ds))
-        #     # info('\int_Gamma u[0] = %e' % assemble(u[0]*ds))
-        #     # info('\int_Gamma u[1] = %e' % assemble(u[1]*ds))
-        #     # # Now plot the faulty u on a finer mesh (to resolve the
-        #     # # quadratic trial functions).
-        #     # fine_mesh = Q.mesh()
-        #     # for k in range(1):
-        #     #     fine_mesh = refine(fine_mesh)
-        #     # V1 = FunctionSpace(fine_mesh, 'CG', 1)
-        #     # W1 = V1*V1
-        #     # uplot = project(u, W1)
-        #     # #uplot = Function(W1)
-        #     # #uplot.interpolate(u)
-        #     # plot(uplot, title='u_tentative')
-        #     # plot(uplot[0], title='u_tentative[0]')
-        #     # plot(uplot[1], title='u_tentative[1]')
-        #     plot(divu, title='div(u_tentative)')
-        #     interactive()
-        #     exit()
-        #     raise RuntimeError(message)
-        # else:
-        #     exit()
-        #     raise RuntimeError('Linear system failed to converge.')
+        try:
+            solver.solve(p1_petsc, b_petsc)
+        except RuntimeError as error:
+            # Check if the system is indeed consistent.
+            #
+            # If the right hand side is flawed (e.g., by round-off errors),
+            # then it may have a component b1 in the direction of the null
+            # space, orthogonal to the image of the operator:
+            #
+            #     b = b0 + b1.
+            #
+            # When starting with initial guess x0=0, the minimal achievable
+            # relative tolerance is then
+            #
+            #    min_rel_tol = ||b1|| / ||b||.
+            #
+            # If ||b|| is very small, which is the case when ui is almost
+            # divergence-free, then min_rel_to may be larger than the
+            # prescribed relative tolerance tol.
+            #
+            # Use this as a consistency check, i.e., bail out if
+            #
+            #     tol < min_rel_tol = ||b1|| / ||b||.
+            #
+            # For computing ||b1||, we use the fact that the null space is
+            # one-dimensional, i.e.,  b1 = alpha e,  and
+            #
+            #     e.b = e.(b0 + b1) = e.b1 = alpha ||e||^2,
+            #
+            # so  alpha = e.b/||e||^2  and
+            #
+            #     ||b1|| = |alpha| ||e|| = e.b / ||e||
+            #
+            from dolfin import norm, info
+            e = Function(P)
+            e.interpolate(Constant(1.0))
+            evec = e.vector()
+            evec /= norm(evec)
+            alpha = b.inner(evec)
+            normB = norm(b)
+            info('Linear system convergence failure.')
+            info(error.message)
+            message = (
+                'Linear system not consistent! '
+                '<b,e> = %g, ||b|| = %g, <b,e>/||b|| = %e, tol = %e.'
+                ) \
+                % (alpha, normB, alpha/normB, tol)
+            info(message)
+            info('\int div(u)  =  %e' % assemble(divu * dx))
+            raise
     return p1
 
 
@@ -466,8 +429,8 @@ def _step(
                 'newton_solver': {
                     'maximum_iterations': 10,
                     'report': True,
-                    'absolute_tolerance': 1.0e-9,
-                    'relative_tolerance': 0.0,
+                    'absolute_tolerance': 1.0e-8,
+                    'relative_tolerance': 1.0e-10,
                     'error_on_nonconvergence': True
                     # 'linear_solver': 'iterative',
                     # # # The nonlinear term makes the problem generally
