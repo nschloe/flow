@@ -410,8 +410,8 @@ def assert_time_order(
     # matches the expected order in at least the first step in the coarsest
     # spatial discretization, and is not getting worse as the spatial
     # discretizations are refining.
-    assert (orders['u'][:, 0] > method_class.order['velocity'] - 0.1).all()
-    assert (orders['p'][:, 0] > method_class.order['pressure'] - 0.1).all()
+    assert (orders['u'][:, 0] > method.order['velocity'] - 0.1).all()
+    assert (orders['p'][:, 0] > method.order['pressure'] - 0.1).all()
     return
 
 
@@ -468,17 +468,17 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
 
 
 if __name__ == '__main__':
-    mesh_sizes = [8, 16, 32]
-    Dt = [0.5**k for k in range(10)]
+    mesh_sizes = [8, 16, 32, 64]
+    Dt = [0.5**k for k in range(40)]
     errors = compute_time_errors(
-        # problem_flat,
+        problem_flat,
         # problem_whirl,
         # problem_guermond1,
-        problem_guermond2,
+        # problem_guermond2,
         # problem_taylor,
         #
-        navsto.Chorin(),
-        # navsto.IPCS(theta=1.0),
+        # navsto.Chorin(),
+        navsto.IPCS(theta=0.0),
         mesh_sizes, Dt
         )
     show_timeorder_info(Dt, mesh_sizes, errors)

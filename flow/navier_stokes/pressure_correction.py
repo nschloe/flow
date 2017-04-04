@@ -168,9 +168,9 @@ def _pressure_poisson(
 
     if p0:
         L2 += dot(grad(p0), grad(q)) * dx
-    if p_n:
-        n = FacetNormal(P.mesh())
-        L2 += dot(n, p_n) * q * ds
+    # if p_n:
+    #     n = FacetNormal(P.mesh())
+    #     L2 += dot(n, p_n) * q * ds
 
     if rotational_form:
         L2 -= mu * dot(grad(div(ui)), grad(q)) * dx
@@ -186,7 +186,8 @@ def _pressure_poisson(
                       'relative_tolerance': tol,
                       'absolute_tolerance': 0.0,
                       'maximum_iterations': 100,
-                      'monitor_convergence': verbose
+                      'monitor_convergence': verbose,
+                      'error_on_nonconvergence': True
                       }
               })
     else:
@@ -257,6 +258,8 @@ def _pressure_poisson(
         solver.parameters['relative_tolerance'] = tol
         solver.parameters['maximum_iterations'] = 100
         solver.parameters['monitor_convergence'] = verbose
+        solver.parameters['error_on_nonconvergence'] = True
+
         # Create solver and solve system
         A_petsc = as_backend_type(A)
         b_petsc = as_backend_type(b)
@@ -465,6 +468,7 @@ def _step(
                     'report': True,
                     'absolute_tolerance': 1.0e-9,
                     'relative_tolerance': 0.0,
+                    'error_on_nonconvergence': True
                     # 'linear_solver': 'iterative',
                     # # # The nonlinear term makes the problem generally
                     # # # nonsymmetric.
@@ -533,14 +537,13 @@ def _step(
     with Message('Computing velocity correction'):
         u2 = TrialFunction(u0.function_space())
         a3 = inner(u2, v) * dx
+
+        phi = p1
         if p0:
-            phi = Function(p0.function_space())
-            phi.assign(p1)
             phi -= p0
-        else:
-            phi = p1
         if rotational_form:
             phi += mu * div(ui)
+
         L3 = inner(ui,  v) * dx \
             - k/rho * inner(grad(phi), v) * dx
         solve(a3 == L3, u0,
@@ -557,7 +560,8 @@ def _step(
                       'relative_tolerance': tol,
                       'absolute_tolerance': 0.0,
                       'maximum_iterations': 100,
-                      'monitor_convergence': verbose
+                      'monitor_convergence': verbose,
+                      'error_on_nonconvergence': True
                       }
                   })
     p0.assign(p1)
@@ -598,6 +602,11 @@ class Chorin(object):
 
 
 class IPCS(object):
+    order = {
+        'velocity': 2.0,
+        'pressure': 1.0,
+        }
+
     def __init__(self, theta=1.0):
         self.theta = theta
         return

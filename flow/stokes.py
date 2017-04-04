@@ -137,6 +137,7 @@ def solve(
     solver.parameters['absolute_tolerance'] = 0.0
     solver.parameters['relative_tolerance'] = tol
     solver.parameters['maximum_iterations'] = max_iter
+    solver.parameters['error_on_nonconvergence'] = True
 
     # Solve
     up = Function(WP)
