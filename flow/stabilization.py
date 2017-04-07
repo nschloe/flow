@@ -31,7 +31,9 @@ from dolfin import Expression
 #     convection dominated flows with particular emphasis on the
 #     incompressible Navier-Stokes equations;
 #     A.N. Brooks, T.J.R. Hughes;
-#     1982;
+#     Computer Methods in Applied Mechanics and Engineering,
+#     Volume 32, Issues 1–3, September 1982, Pages 199-259.
+#     <https://dx.doi.org/10.1016/0045-7825(82)90071-8>
 #     <http://ccpo.odu.edu/~tejada/USACM07/BrooksHughes.pdf>.
 #
 def supg(convection, diffusion):

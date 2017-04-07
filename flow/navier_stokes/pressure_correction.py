@@ -299,10 +299,10 @@ def _step(
         u0, p0,
         u_bcs, p_bcs,
         rho, mu, theta,
+        stabilization,
         f0=None, f1=None,
         verbose=True,
         tol=1.0e-10,
-        stabilization=True
         ):
     '''Incremental pressure correction scheme scheme as described in section
     3.4 of
@@ -524,7 +524,7 @@ class Chorin(object):
         'pressure': 0.5,
         }
 
-    def __init__(self, stabilization=True):
+    def __init__(self, stabilization=False):
         self.stabilization = stabilization
         return
 
@@ -559,7 +559,7 @@ class IPCS(object):
         'pressure': 1.0,
         }
 
-    def __init__(self, theta=1.0, stabilization=True):
+    def __init__(self, theta=1.0, stabilization=False):
         self.theta = theta
         self.stabilization = stabilization
         return
@@ -578,10 +578,10 @@ class IPCS(object):
             dt,
             u0, p0,
             u_bcs, p_bcs,
+            stabilization=self.stabilization,
             rho=rho, mu=mu,
             theta=self.theta,
             f0=f0, f1=f1,
             verbose=verbose,
-            tol=tol,
-            stabilization=self.stabilization
+            tol=tol
             )

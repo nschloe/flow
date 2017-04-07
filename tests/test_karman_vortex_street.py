@@ -9,17 +9,18 @@ from dolfin import (
 import materials
 import meshio
 import pygmsh
+import sys
 
 x0 = 0.0
-x1 = 5.0
-y0 = -0.5
-y1 = 0.5
+x1 = 0.6
+y0 = -0.05
+y1 = 0.05
 
 
 def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
-    circle = geom.add_circle([1.0, 0.0, 0.0], 0.2, lcar, make_surface=False)
+    circle = geom.add_circle([0.1, 0.0, 0.0], 0.02, lcar, make_surface=False)
 
     geom.add_rectangle(
         x0, x1, y0, y1,
@@ -107,8 +108,8 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     # component of the outflow to 0, and letting the normal component du/dn=0
     # (again, this is achieved implicitly by the weak formulation).
     #
-    inflow = Expression('0.1 * (0.5 + x[1]) * (0.5 - x[1])', degree=2)
-    outflow = Expression('0.1 * (0.5 + x[1]) * (0.5 - x[1])', degree=2)
+    inflow = Expression('10.0 * (0.05 + x[1]) * (0.05 - x[1])', degree=2)
+    outflow = Expression('10.0 * (0.05 + x[1]) * (0.05 - x[1])', degree=2)
     u_bcs = [
         DirichletBC(W, (0.0, 0.0), upper_boundary),
         DirichletBC(W, (0.0, 0.0), lower_boundary),
@@ -149,7 +150,8 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         )
 
     rho = materials.water.density(T=293.0)
-    stepper = flow.navier_stokes.IPCS(theta=1.0)
+    # stepper = flow.navier_stokes.IPCS(theta=1.0)
+    stepper = flow.navier_stokes.Chorin()
 
     W2 = u0.function_space()
     P2 = p0.function_space()
@@ -176,7 +178,11 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     dt_max = 0.1
     t = 0.0
 
-    for k in range(num_steps):
+    k = 0
+    while k < num_steps:
+        k += 1
+        print
+        print('t = %f' % t)
         if show:
             plot(u0)
             plot(p0)
@@ -221,7 +227,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         unorm = norm(unorm.vector(), 'linf')
         # print('||u||_inf = %e' % unorm)
         # Some smooth step-size adaption.
-        target_dt = 0.2 * mesh.hmax() / unorm
+        target_dt = 1.0 * mesh.hmax() / unorm
         print('current dt: %e' % dt)
         print('target dt:  %e' % target_dt)
         # alpha is the aggressiveness factor. The distance between the current
@@ -242,4 +248,4 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
 
 
 if __name__ == '__main__':
-    test_karman(lcar=5.0e-2, num_steps=1000, show=True)
+    test_karman(lcar=5.0e-3, num_steps=sys.maxint, show=True)
