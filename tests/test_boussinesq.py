@@ -225,10 +225,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
         # Do one Navier-Stokes time step.
         begin('Computing flux and pressure...')
-        stepper = flow.navier_stokes.IPCS(
-                # TODO take rho(theta)?
-                rho(293.0), mu
-                )
+        stepper = flow.navier_stokes.IPCS()
         W = u0.function_space()
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
@@ -237,6 +234,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                     dt,
                     u0, p0,
                     u_bcs, p_bcs,
+                    # TODO use rho(theta)
+                    rho(room_temp), mu,
                     # f0=g,
                     f1=rho(theta) * g,
                     verbose=False,
@@ -267,7 +266,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         from dolfin import plot, interactive
         plot(theta0, title='theta')
         plot(u0, title='u')
-        plot(div(u), title='div(u)', rescale=True)
+        # plot(div(u), title='div(u)', rescale=True)
         plot(p0, title='p')
         interactive()
 
@@ -303,7 +302,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         # alpha is the aggressiveness factor. The distance between the current
         # step size and the target step size is reduced by |1-alpha|. Hence,
         # if alpha==1 then dt_next==target_dt. Otherwise target_dt is
-        # approached slowlier.
+        # approached more slowly.
         alpha = 0.5
         dt = min(
             dt_max,
