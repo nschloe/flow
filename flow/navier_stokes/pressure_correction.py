@@ -19,12 +19,21 @@ or
 '''
 
 from ..message import Message
+from ..stabilization import supg
 
 from dolfin import (
     dot, inner, grad, dx, div, Function, TestFunction, solve, Constant,
     DOLFIN_EPS, derivative, TrialFunction, assemble, PETScPreconditioner,
     PETScKrylovSolver, as_backend_type, PETScOptions
     )
+
+
+def _rhs_strong(u, f, rho, mu):
+    '''Right-hand side of the Navier--Stokes momentum equation in strong form.
+    '''
+    return f \
+        - mu * div(grad(u)) \
+        - rho * (grad(u)*u + 0.5*div(u)*u)
 
 
 def _rhs_weak(u, v, f, rho, mu):
@@ -292,7 +301,8 @@ def _step(
         rho, mu, theta,
         f0=None, f1=None,
         verbose=True,
-        tol=1.0e-10
+        tol=1.0e-10,
+        stabilization=True
         ):
     '''Incremental pressure correction scheme scheme as described in section
     3.4 of
@@ -359,21 +369,17 @@ def _step(
         if p0:
             F1 += k * inner(grad(p0), v) * dx
 
-        # if stabilization:
-        #     tau = stab.supg2(V.mesh(),
-        #                      u_1,
-        #                      mu/rho,
-        #                      V.ufl_element().degree()
-        #                      )
-        #     R = rho*(ui - u_1)/k
-        #     if abs(theta) > DOLFIN_EPS:
-        #         R -= theta * _rhs_strong(ui, f1, rho, mu)
-        #     if abs(1.0-theta) > DOLFIN_EPS:
-        #         R -= (1.0-theta) * _rhs_strong(u_1, f0, rho, mu)
-        #     if p_1:
-        #         R += grad(p_1)
-        #     # TODO use u_1 or ui here?
-        #     F1 += k * tau * dot(R, grad(v)*u_1) * dx
+        if stabilization:
+            tau = supg(u0, mu/rho)
+            R = rho*(ui - u0)/k
+            if abs(theta) > DOLFIN_EPS:
+                R -= theta * _rhs_strong(ui, f1, rho, mu)
+            if abs(1.0-theta) > DOLFIN_EPS:
+                R -= (1.0-theta) * _rhs_strong(u0, f0, rho, mu)
+            if p0:
+                R += grad(p0)
+            # TODO use u0 or ui here?
+            F1 += k * tau * dot(R, grad(v)*u0) * dx
 
         # Get linearization and solve nonlinear system.
         # If the scheme is fully explicit (theta=0.0), then the system is
@@ -518,7 +524,8 @@ class Chorin(object):
         'pressure': 0.5,
         }
 
-    def __init__(self):
+    def __init__(self, stabilization=True):
+        self.stabilization = stabilization
         return
 
     # p0 and f0 aren't necessary here, we just keep it around to interface
@@ -541,7 +548,8 @@ class Chorin(object):
             theta=1.0,
             f0=None, f1=f1,
             verbose=verbose,
-            tol=tol
+            tol=tol,
+            stabilization=self.stabilization
             )
 
 
@@ -551,8 +559,9 @@ class IPCS(object):
         'pressure': 1.0,
         }
 
-    def __init__(self, theta=1.0):
+    def __init__(self, theta=1.0, stabilization=True):
         self.theta = theta
+        self.stabilization = stabilization
         return
 
     def step(
@@ -573,5 +582,6 @@ class IPCS(object):
             theta=self.theta,
             f0=f0, f1=f1,
             verbose=verbose,
-            tol=tol
+            tol=tol,
+            stabilization=self.stabilization
             )
