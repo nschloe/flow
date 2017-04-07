@@ -36,8 +36,8 @@ def create_mesh(lcar):
     return Mesh('test.xml')
 
 
-def test_karman(num_steps=2, show=False):
-    mesh = create_mesh(lcar=0.1)
+def test_karman(num_steps=2, lcar=0.1, show=False):
+    mesh = create_mesh(lcar)
 
     W_element = VectorElement('Lagrange', mesh.ufl_cell(), 2)
     P_element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
@@ -242,4 +242,4 @@ def test_karman(num_steps=2, show=False):
 
 
 if __name__ == '__main__':
-    test_karman(num_steps=1000, show=True)
+    test_karman(lcar=5.0e-2, num_steps=1000, show=True)
