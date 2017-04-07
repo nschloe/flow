@@ -3,8 +3,9 @@
 import flow
 
 from dolfin import (
-        Mesh, SubDomain, FunctionSpace, Expression, DirichletBC, VectorElement,
-        FiniteElement, Constant, plot, begin, end, project, norm, XDMFFile
+        Mesh, SubDomain, FunctionSpace, DirichletBC, VectorElement,
+        FiniteElement, Constant, plot, begin, end, project, norm, XDMFFile,
+        sqrt, Expression
         )
 import materials
 import meshio
@@ -13,14 +14,19 @@ import sys
 
 x0 = 0.0
 x1 = 0.6
-y0 = -0.05
-y1 = 0.05
+y0 = -0.07
+y1 = 0.07
+obstacle_diameter = 0.04
+entrance_velocity = 0.01
 
 
 def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
-    circle = geom.add_circle([0.1, 0.0, 0.0], 0.02, lcar, make_surface=False)
+    # slightly off-center circle
+    circle = geom.add_circle(
+        [0.1, 1.0e-2, 0.0], 0.5 * obstacle_diameter, lcar, make_surface=False
+        )
 
     geom.add_rectangle(
         x0, x1, y0, y1,
@@ -108,8 +114,16 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     # component of the outflow to 0, and letting the normal component du/dn=0
     # (again, this is achieved implicitly by the weak formulation).
     #
-    inflow = Expression('10.0 * (0.05 + x[1]) * (0.05 - x[1])', degree=2)
-    outflow = Expression('10.0 * (0.05 + x[1]) * (0.05 - x[1])', degree=2)
+    inflow = Expression(
+            '%e * (%e - x[1]) * (x[1] - %e) / %e' %
+            (entrance_velocity, y1, y0, (0.5 * (y1 - y0))**2),
+            degree=2
+            )
+    outflow = Expression(
+            '%e * (%e - x[1]) * (x[1] - %e) / %e' %
+            (entrance_velocity, y1, y0, (0.5 * (y1 - y0))**2),
+            degree=2
+            )
     u_bcs = [
         DirichletBC(W, (0.0, 0.0), upper_boundary),
         DirichletBC(W, (0.0, 0.0), lower_boundary),
@@ -137,7 +151,11 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         # DirichletBC(P, 0.0, right_boundary)
         ]
 
-    mu = materials.water.dynamic_viscosity(T=293.0)
+    # Getting vortices is not easy. If we take the actual viscosity of water,
+    # they don't appear.
+    mu = 0.002
+    # mu = materials.water.dynamic_viscosity(T=293.0)
+
     # For starting off, solve the Stokes equation.
     u0, p0 = flow.stokes.solve(
         WP,
@@ -146,7 +164,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         f=Constant((0.0, 0.0)),
         verbose=False,
         tol=1.0e-13,
-        max_iter=1000
+        max_iter=10000
         )
 
     rho = materials.water.density(T=293.0)
@@ -173,6 +191,11 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         u_file = XDMFFile('velocity.xdmf')
         u_file.parameters['flush_output'] = True
         u_file.parameters['rewrite_function_mesh'] = False
+
+    # Report Reynolds number.
+    # https://en.wikipedia.org/wiki/Reynolds_number#Sphere_in_a_fluid
+    reynolds = entrance_velocity * obstacle_diameter * rho / mu
+    print('Reynolds number:  %e' % reynolds)
 
     dt = 1.0e-5
     dt_max = 0.1
@@ -220,11 +243,12 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         begin('Step size adaptation...')
         ux, uy = u0.split()
         unorm = project(
-                abs(ux) + abs(uy),
+                sqrt(ux**2 + uy**2),
                 FunctionSpace(mesh, 'Lagrange', 2),
                 form_compiler_parameters={'quadrature_degree': 4}
                 )
         unorm = norm(unorm.vector(), 'linf')
+
         # print('||u||_inf = %e' % unorm)
         # Some smooth step-size adaption.
         target_dt = 1.0 * mesh.hmax() / unorm
