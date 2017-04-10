@@ -7,4 +7,4 @@
 *.ogv
 *.html
 .cache/
-LloydInit.pos
+*.pos
