@@ -22,11 +22,11 @@ def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
     x0 = 0.0
-    x1 = 1.0
+    x1 = 0.1
     y0 = 0.0
-    y1 = 2.0
+    y1 = 0.2
 
-    circle = geom.add_circle([0.5, 0.5, 0.0], 0.2, lcar, make_surface=False)
+    circle = geom.add_circle([0.05, 0.05, 0.0], 0.02, lcar, make_surface=False)
 
     geom.add_rectangle(
         x0, x1, y0, y1,
@@ -225,7 +225,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
         # Do one Navier-Stokes time step.
         begin('Computing flux and pressure...')
-        stepper = flow.navier_stokes.IPCS()
+        stepper = flow.navier_stokes.Chorin()
         W = u0.function_space()
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
@@ -317,4 +317,4 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=120.0, lcar=0.1)
+    test_boussinesq(target_time=120.0, lcar=1.0e-2)
