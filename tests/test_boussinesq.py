@@ -7,11 +7,10 @@ Coupled solve of the Navier--Stokes and the heat equation.
 import flow
 
 from dolfin import (
-        begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
-        FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
-        TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver,
-        div
-        )
+    begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
+    FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
+    TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver
+    )
 import materials
 import meshio
 import parabolic
