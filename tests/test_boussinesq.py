@@ -263,12 +263,12 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
         # write to file
         theta_file.write(theta0, t)
 
-        from dolfin import plot, interactive
-        plot(theta0, title='theta')
-        plot(u0, title='u')
-        # plot(div(u), title='div(u)', rescale=True)
-        plot(p0, title='p')
-        interactive()
+        # from dolfin import plot, interactive
+        # plot(theta0, title='theta')
+        # plot(u0, title='u')
+        # # plot(div(u), title='div(u)', rescale=True)
+        # plot(p0, title='p')
+        # interactive()
 
         # Adaptive stepsize control based solely on the velocity field.
         # CFL-like condition for time step. This should be some sort of average
