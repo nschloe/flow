@@ -411,6 +411,28 @@ def test_ipcs(problem, stabilization, tol=1.0e-10):
     return
 
 
+@pytest.mark.parametrize('problem', [
+    # problem_flat,
+    # problem_whirl,
+    problem_guermond1,
+    # problem_guermond2,
+    # problem_taylor,
+    ])
+@pytest.mark.parametrize('stabilization', [True, False])
+def test_rotational(problem, stabilization, tol=1.0e-10):
+    assert_time_order(
+        problem,
+        navsto.Rotational(
+            stabilization=stabilization,
+            time_step_method='backward euler'
+            ),
+        tol,
+        mesh_sizes=[32, 64],
+        Dt=[1.0e-2, 0.5e-2],
+        )
+    return
+
+
 def assert_time_order(
         problem, method,
         tol=1.0e-10,
@@ -487,16 +509,17 @@ if __name__ == '__main__':
     mesh_sizes = [8, 16, 32]
     Dt = [0.5**k for k in range(20)]
     errors = compute_time_errors(
-        problem_flat,
+        # problem_flat,
         # problem_whirl,
-        # problem_guermond1,
+        problem_guermond1,
         # problem_guermond2,
         # problem_taylor,
         #
-        navsto.Chorin(),
+        # navsto.Chorin(),
         # navsto.IPCS(time_step_method='forward euler'),
         # navsto.IPCS(time_step_method='backward euler'),
         # navsto.IPCS(time_step_method='bdf2'),
+        navsto.Rotational(),
         mesh_sizes, Dt
         )
     show_timeorder_info(Dt, mesh_sizes, errors)
