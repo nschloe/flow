@@ -19,11 +19,11 @@ or
 '''
 
 from ..message import Message
-from ..stabilization import supg
+# from ..stabilization import supg
 
 from dolfin import (
     dot, inner, grad, dx, div, Function, TestFunction, solve, Constant,
-    DOLFIN_EPS, derivative, TrialFunction, assemble, PETScPreconditioner,
+    derivative, TrialFunction, assemble, PETScPreconditioner,
     PETScKrylovSolver, as_backend_type, PETScOptions
     )
 
@@ -296,11 +296,13 @@ def _pressure_poisson(
 
 def _step(
         dt,
-        u0, p0,
+        u, p0,
         u_bcs, p_bcs,
-        rho, mu, theta,
+        rho, mu,
         stabilization,
-        f0=None, f1=None,
+        time_step_method,
+        f,
+        rotational_form=False,
         verbose=True,
         tol=1.0e-10,
         ):
@@ -326,7 +328,7 @@ def _step(
             pass
 
     # Define trial and test functions
-    v = TestFunction(u0.function_space())
+    v = TestFunction(u[0].function_space())
     # Create functions
     # Define coefficients
     k = Constant(dt)
@@ -349,37 +351,52 @@ def _step(
         #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JMR06.CMAME.pdf>.
         #
 
-        ui = Function(u0.function_space())
+        ui = Function(u[0].function_space())
 
-        # F1 is multiplied with the factor k.
-        F1 = rho * inner(ui - u0, v) * dx
-
-        if abs(theta) > DOLFIN_EPS:
-            # Implicit terms.
-            # Implicit schemes need f at target step (f1).
-            assert f1 is not None
-            F1 -= k * theta * _rhs_weak(ui, v, f1, rho, mu)
-        if abs(1.0 - theta) > DOLFIN_EPS:
-            # Explicit terms.
-            # Explicit schemes need f at current step (f0).
-            assert f0 is not None
-            F1 -= k * (1.0 - theta) \
-                * _rhs_weak(u0, v, f0, rho, mu)
+        # F1 is scaled with `k / rho`.
+        if time_step_method == 'forward euler':
+            alpha = 1.0
+            F1 = (
+                inner(ui - u[0], v) * dx
+                - k/rho * _rhs_weak(u[0], v, f[0], rho, mu)
+                )
+        elif time_step_method == 'backward euler':
+            alpha = 1.0
+            F1 = (
+                inner(ui - u[0], v) * dx
+                - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
+                )
+        elif time_step_method == 'crank-nicolson':
+            alpha = 1.0
+            F1 = (
+                inner(ui - u[0], v) * dx
+                - k/rho * 0.5 * (
+                    _rhs_weak(u[0], v, f[0], rho, mu) +
+                    _rhs_weak(ui, v, f[1], rho, mu)
+                    )
+                )
+        else:
+            assert time_step_method == 'bdf2'
+            alpha = 1.5
+            F1 = (
+                inner(1.5 * ui - 2 * u[0] + 0.5 * u[-1], v) * dx
+                - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
+                )
 
         if p0:
-            F1 += k * inner(grad(p0), v) * dx
+            F1 += k/rho * inner(grad(p0), v) * dx
 
-        if stabilization:
-            tau = supg(u0, mu/rho)
-            R = rho*(ui - u0)/k
-            if abs(theta) > DOLFIN_EPS:
-                R -= theta * _rhs_strong(ui, f1, rho, mu)
-            if abs(1.0-theta) > DOLFIN_EPS:
-                R -= (1.0-theta) * _rhs_strong(u0, f0, rho, mu)
-            if p0:
-                R += grad(p0)
-            # TODO use u0 or ui here?
-            F1 += k * tau * dot(R, grad(v)*u0) * dx
+        # if stabilization:
+        #     tau = supg(u[0], mu/rho)
+        #     R = rho*(ui - u[0])/k
+        #     if abs(theta) > DOLFIN_EPS:
+        #         R -= theta * _rhs_strong(ui, f[1], rho, mu)
+        #     if abs(1.0-theta) > DOLFIN_EPS:
+        #         R -= (1.0-theta) * _rhs_strong(u[0], f[0], rho, mu)
+        #     if p0:
+        #         R += grad(p0)
+        #     # TODO use u0 or ui here?
+        #     F1 += k/rho * tau * dot(R, grad(v)*u[0]) * dx
 
         # Get linearization and solve nonlinear system.
         # If the scheme is fully explicit (theta=0.0), then the system is
@@ -402,7 +419,7 @@ def _step(
         #     ||u - u_e|| = 5.921522e-02
         #
         # Hence, use u0 as initial guess.
-        ui.assign(u0)
+        ui.assign(u[0])
 
         # problem = NonlinearVariationalProblem(F1, ui, u_bcs, J)
         # solver = NonlinearVariationalSolver(problem)
@@ -470,14 +487,13 @@ def _step(
         # normal direction. In that case, one needs to specify Dirichlet
         # pressure conditions.
         #
-        rotational_form = False
         p1 = _pressure_poisson(
                 p0,
                 mu, ui,
-                divu=rho / Constant(dt) * div(ui),
+                divu=alpha * rho/k * div(ui),
                 p_bcs=p_bcs,
                 p_n=None,
-                rotational_form=False,
+                rotational_form=rotational_form,
                 tol=tol,
                 verbose=verbose
                 )
@@ -485,7 +501,7 @@ def _step(
     # Velocity correction.
     #   U = U0 - dt/rho \nabla p.
     with Message('Computing velocity correction'):
-        u2 = TrialFunction(u0.function_space())
+        u2 = TrialFunction(u[0].function_space())
         a3 = inner(u2, v) * dx
 
         phi = p1
@@ -496,7 +512,8 @@ def _step(
 
         L3 = inner(ui,  v) * dx \
             - k/rho * inner(grad(phi), v) * dx
-        solve(a3 == L3, u0,
+        u1 = Function(u[0].function_space())
+        solve(a3 == L3, u1,
               bcs=u_bcs,
               solver_parameters={
                   'linear_solver': 'iterative',
@@ -514,8 +531,7 @@ def _step(
                       'error_on_nonconvergence': True
                       }
                   })
-    p0.assign(p1)
-    return u0, p0
+    return u1, p1
 
 
 class Chorin(object):
@@ -533,23 +549,23 @@ class Chorin(object):
     def step(
             self,
             dt,
-            u0, p0,
+            u, p0,
             u_bcs, p_bcs,
             rho, mu,
-            f0=None, f1=None,
+            f,
             verbose=True,
             tol=1.0e-10
             ):
         return _step(
             dt,
-            u0, p0=Function(p0.function_space()),
-            u_bcs=u_bcs, p_bcs=p_bcs,
-            rho=rho, mu=mu,
-            theta=1.0,
-            f0=None, f1=f1,
+            u, Function(p0.function_space()),
+            u_bcs, p_bcs,
+            rho, mu,
+            self.stabilization,
+            'backward euler',
+            f,
             verbose=verbose,
             tol=tol,
-            stabilization=self.stabilization
             )
 
 
@@ -559,29 +575,64 @@ class IPCS(object):
         'pressure': 1.0,
         }
 
-    def __init__(self, theta=1.0, stabilization=False):
-        self.theta = theta
+    def __init__(self, time_step_method='backward euler', stabilization=False):
+        self.time_step_method = time_step_method
         self.stabilization = stabilization
         return
 
     def step(
             self,
             dt,
-            u0, p0,
+            u, p0,
             u_bcs, p_bcs,
             rho, mu,
-            f0=None, f1=None,
+            f,
             verbose=True,
             tol=1.0e-10
             ):
         return _step(
             dt,
-            u0, p0,
+            u, p0,
             u_bcs, p_bcs,
-            stabilization=self.stabilization,
-            rho=rho, mu=mu,
-            theta=self.theta,
-            f0=f0, f1=f1,
+            rho, mu,
+            self.stabilization,
+            self.time_step_method,
+            f,
+            verbose=verbose,
+            tol=tol
+            )
+
+
+class Rotational(object):
+    order = {
+        'velocity': 2.0,
+        'pressure': 1.5,
+        }
+
+    def __init__(self, time_step_method='backward euler', stabilization=False):
+        self.time_step_method = time_step_method
+        self.stabilization = stabilization
+        return
+
+    def step(
+            self,
+            dt,
+            u, p0,
+            u_bcs, p_bcs,
+            rho, mu,
+            f,
+            verbose=True,
+            tol=1.0e-10
+            ):
+        return _step(
+            dt,
+            u, p0,
+            u_bcs, p_bcs,
+            rho, mu,
+            self.stabilization,
+            self.time_step_method,
+            f,
+            rotational_form=True,
             verbose=verbose,
             tol=tol
             )

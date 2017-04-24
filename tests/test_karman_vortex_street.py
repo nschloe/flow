@@ -213,11 +213,13 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
 
         u1, p1 = stepper.step(
                 dt,
-                u0, p0,
+                {0: u0}, p0,
                 u_bcs, p_bcs,
                 rho, mu,
-                f0=Constant((0.0, 0.0)),
-                f1=Constant((0.0, 0.0)),
+                f={
+                    0: Constant((0.0, 0.0)),
+                    1: Constant((0.0, 0.0))
+                },
                 verbose=False,
                 tol=1.0e-10
                 )

@@ -195,16 +195,25 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
     theta_file.parameters['flush_output'] = True
     theta_file.parameters['rewrite_function_mesh'] = False
 
+    u_file = XDMFFile('velocity.xdmf')
+    u_file.parameters['flush_output'] = True
+    u_file.parameters['rewrite_function_mesh'] = False
+
+    p_file = XDMFFile('pressure.xdmf')
+    p_file.parameters['flush_output'] = True
+    p_file.parameters['rewrite_function_mesh'] = False
+
+
     while t < target_time + DOLFIN_EPS:
         begin('Time step %e -> %e...' % (t, t+dt))
 
         # Crank up the heater from room_temp to max_heater_temp in t1 secs.
-        t1 = 1.0
-        heater_temp = (
-            + room_temp
-            + min(1.0, t/t1) * (max_heater_temp - room_temp)
-            )
-        # heater_temp = room_temp
+        # t1 = 1.0
+        # heater_temp = (
+        #     + room_temp
+        #     + min(1.0, t/t1) * (max_heater_temp - room_temp)
+        #     )
+        heater_temp = room_temp
 
         # Do one heat time step.
         begin('Computing heat...')
@@ -224,19 +233,20 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
         # Do one Navier-Stokes time step.
         begin('Computing flux and pressure...')
-        stepper = flow.navier_stokes.Chorin()
+        # stepper = flow.navier_stokes.Chorin()
+        # stepper = flow.navier_stokes.IPCS()
+        stepper = flow.navier_stokes.Rotational()
         W = u0.function_space()
         u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
         p_bcs = []
         try:
             u, p = stepper.step(
                     dt,
-                    u0, p0,
+                    {0: u0}, p0,
                     u_bcs, p_bcs,
                     # TODO use rho(theta)
                     rho(room_temp), mu,
-                    # f0=g,
-                    f1=rho(theta) * g,
+                    f={0: g, 1: rho(theta) * g},
                     verbose=False,
                     tol=1.0e-10
                     )
@@ -261,6 +271,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
         # write to file
         theta_file.write(theta0, t)
+        u_file.write(u0, t)
+        p_file.write(p0, t)
 
         # from dolfin import plot, interactive
         # plot(theta0, title='theta')
