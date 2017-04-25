@@ -4,7 +4,7 @@ import flow
 
 from dolfin import (
         Mesh, FunctionSpace, DirichletBC, VectorElement, FiniteElement,
-        Constant, plot, XDMFFile
+        Constant, plot, XDMFFile, project, SpatialCoordinate, sqrt, norm
         )
 import materials
 import meshio
@@ -40,16 +40,22 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
 
     mu = materials.water.dynamic_viscosity(T=293.0)
 
-    # For starting off, solve the Stokes equation.
-    u0, p0 = flow.stokes.solve(
-        WP,
-        u_bcs + p_bcs,
-        mu,
-        f=Constant((0.0, 0.0)),
-        verbose=False,
-        tol=1.0e-13,
-        max_iter=10000
-        )
+    g = -9.81
+
+    # When using Stokes for bootstrapping, the velocity errors are introduced
+    # in the first step that IPCS/Rotational will never get rid of.
+    # u0, p0 = flow.stokes.solve(
+    #     WP,
+    #     u_bcs + p_bcs,
+    #     mu,
+    #     f=Constant((0.0, 0.0)),
+    #     verbose=False,
+    #     tol=1.0e-13,
+    #     max_iter=10000
+    #     )
+    y = SpatialCoordinate(mesh)[1]
+    u0 = project(Constant([0, 0]), FunctionSpace(mesh, W_element))
+    p0 = project(g * y, FunctionSpace(mesh, P_element))
 
     rho = materials.water.density(T=293.0)
     # stepper = flow.navier_stokes.Chorin()
@@ -84,8 +90,8 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
                 u_bcs, p_bcs,
                 rho, mu,
                 f={
-                    0: Constant((0.0, -9.81)),
-                    1: Constant((0.0, -9.81))
+                    0: Constant((0.0, g)),
+                    1: Constant((0.0, g))
                 },
                 verbose=False,
                 tol=1.0e-10
@@ -93,6 +99,15 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
         u0.assign(u1)
         p0.assign(p1)
         t += dt
+
+    ux, uy = u0.split()
+    unorm = project(
+            sqrt(ux**2 + uy**2),
+            FunctionSpace(mesh, 'Lagrange', 2),
+            form_compiler_parameters={'quadrature_degree': 4}
+            )
+    unorm = norm(unorm.vector(), 'linf')
+    assert unorm < 1.0e-15
 
     return
 
