@@ -169,7 +169,8 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
 
     rho = materials.water.density(T=293.0)
     # stepper = flow.navier_stokes.IPCS(theta=1.0)
-    stepper = flow.navier_stokes.Chorin()
+    # stepper = flow.navier_stokes.Chorin()
+    stepper = flow.navier_stokes.Rotational()
 
     W2 = u0.function_space()
     P2 = p0.function_space()
@@ -198,7 +199,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     print('Reynolds number:  %e' % reynolds)
 
     dt = 1.0e-5
-    dt_max = 0.1
+    dt_max = 1.0
     t = 0.0
 
     k = 0

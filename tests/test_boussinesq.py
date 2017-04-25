@@ -153,14 +153,14 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
     kappa = materials.water.thermal_conductivity
 
     # Start time, end time, time step.
-    dt_max = 0.1
+    dt_max = 1.0
     dt0 = 1.0e-2
     # This should be
     # umax = 1.0e-1
     # dt0 = 0.2 * mesh.hmin() / umax
     t = 0.0
 
-    max_heater_temp = 380.0
+    max_heater_temp = 300.0
 
     # Gravity force.
     g = Constant((0.0, -9.81))
@@ -203,17 +203,20 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
     p_file.parameters['flush_output'] = True
     p_file.parameters['rewrite_function_mesh'] = False
 
+    # theta_file.write(theta0, t)
+    u_file.write(u0, t)
+    p_file.write(p0, t)
 
     while t < target_time + DOLFIN_EPS:
         begin('Time step %e -> %e...' % (t, t+dt))
 
         # Crank up the heater from room_temp to max_heater_temp in t1 secs.
-        # t1 = 1.0
-        # heater_temp = (
-        #     + room_temp
-        #     + min(1.0, t/t1) * (max_heater_temp - room_temp)
-        #     )
-        heater_temp = room_temp
+        t1 = 30.0
+        heater_temp = (
+            + room_temp
+            + min(1.0, t/t1) * (max_heater_temp - room_temp)
+            )
+        # heater_temp = room_temp
 
         # Do one heat time step.
         begin('Computing heat...')
@@ -221,10 +224,12 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             DirichletBC(Q, heater_temp, hot_boundary),
             DirichletBC(Q, room_temp, cool_boundary),
             ]
-        # Use all quanities at room temperature to avoid nonlinearity
+        # Use all quantities at room temperature to avoid nonlinearity
         stepper = parabolic.ImplicitEuler(
                 Heat(
-                    Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
+                    # FIXME
+                    # Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
+                    Q, Constant([0, 0]), kappa(room_temp), rho(room_temp), cp(room_temp),
                     heat_bcs
                     )
                 )
@@ -328,4 +333,4 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=120.0, lcar=1.0e-2)
+    test_boussinesq(target_time=0.1, lcar=0.5e-2)
