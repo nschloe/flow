@@ -5,7 +5,7 @@ import flow
 from dolfin import (
         Mesh, FunctionSpace, DirichletBC, VectorElement, FiniteElement,
         Constant, plot, XDMFFile, project, SpatialCoordinate, sqrt, norm,
-        mpi_comm_world
+        mpi_comm_world, interactive
         )
 import materials
 import meshio
@@ -107,10 +107,11 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
             print
             print('t = %f' % t)
             if show:
-                plot(u0)
-                plot(p0)
                 xdmf_file.write(u0, t)
                 xdmf_file.write(p0, t)
+                plot(u0)
+                plot(p0)
+                interactive()
 
             u1, p1 = stepper.step(
                     dt,

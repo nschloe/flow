@@ -99,13 +99,22 @@ class Heat(object):
         # than the main diagonal. To prevent that, it is suggested by
         # Großmann/Roos to use a vertex-centered discretization for the mass
         # matrix part.
+        # Check
+        # https://bitbucket.org/fenics-project/ffc/issues/145/uflacs-error-for-vertex-quadrature-scheme
         f1 = assemble(
-            u * v * dx,
-            form_compiler_parameters={
-                'quadrature_rule': 'vertex',
-                'quadrature_degree': 1
-                }
-            )
+              u * v * dx,
+              form_compiler_parameters={
+                  'quadrature_rule': 'vertex',
+                  'representation': 'quadrature'
+                  }
+              )
+        # f1 = assemble(
+        #     u * v * dx,
+        #     form_compiler_parameters={
+        #         'quadrature_rule': 'vertex',
+        #         'quadrature_degree': 1
+        #         }
+        #     )
         f2 = assemble(
             - dot(self.conv, grad(u)) * v * dx
             - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
@@ -163,8 +172,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
     max_heater_temp = 300.0
 
-    # Gravity force.
-    g = Constant((0.0, -9.81))
+    # Gravity accelleration.
+    accelleration_constant = -9.81
+    g = Constant((0.0, accelleration_constant))
 
     W_element = VectorElement('Lagrange', mesh.ufl_cell(), 2)
     P_element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
@@ -172,33 +182,34 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
     Q = FunctionSpace(mesh, 'Lagrange', 2)
 
+    # Everything at room temperature for starters
+    theta0 = project(Constant(room_temp), Q)
+    theta0.rename('temperature', 'temperature')
+
     u_bcs = [DirichletBC(WP.sub(0), (0.0, 0.0), 'on_boundary')]
     p_bcs = []
 
     # Solve Stokes for initial state.
+    # Make sure that the right-hand side is the same as in the first step of
+    # Navier-Stokes below. This avoids problems with the initial pressure being
+    # a bit off, which leads to errors.
     # u0, p0 = flow.stokes.solve(
     #     WP,
     #     u_bcs + p_bcs,
     #     mu,
-    #     f=g,
+    #     f=rho(theta0) * g,
     #     verbose=False,
-    #     tol=1.0e-13,
+    #     tol=1.0e-15,
     #     max_iter=1000
     #     )
     y = SpatialCoordinate(mesh)[1]
     u0 = project(Constant([0, 0]), FunctionSpace(mesh, W_element))
     u0.rename('velocity', 'velocity')
-    p0 = project(-9.81 * y, FunctionSpace(mesh, P_element))
+    p0 = project(
+        rho(theta0) * accelleration_constant * y,
+        FunctionSpace(mesh, P_element)
+        )
     p0.rename('pressure', 'pressure')
-
-    # from dolfin import plot, interactive
-    # plot(u0)
-    # plot(p0)
-    # interactive()
-
-    # Everything at room temperature for starters
-    theta0 = project(Constant(room_temp), Q)
-    theta0.rename('temperature', 'temperature')
 
     # div_u = Function(Q)
     dt = dt0
@@ -218,23 +229,23 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 )
             # heater_temp = room_temp
 
-            # # Do one heat time step.
-            # begin('Computing heat...')
-            # heat_bcs = [
-            #     DirichletBC(Q, heater_temp, hot_boundary),
-            #     DirichletBC(Q, room_temp, cool_boundary),
-            #     ]
-            # # Use all quantities at room temperature to avoid nonlinearity
-            # stepper = parabolic.ImplicitEuler(
-            #         Heat(
-            #             # FIXME
-            #             # Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
-            #             Q, Constant([0, 0]), kappa(room_temp), rho(room_temp), cp(room_temp),
-            #             heat_bcs
-            #             )
-            #         )
-            # theta1 = stepper.step(theta0, t, dt)
-            # end()
+            # Do one heat time step.
+            begin('Computing heat...')
+            heat_bcs = [
+                DirichletBC(Q, heater_temp, hot_boundary),
+                DirichletBC(Q, room_temp, cool_boundary),
+                ]
+            # Use all quantities at room temperature to avoid nonlinearity
+            stepper = parabolic.ImplicitEuler(
+                    Heat(
+                        # FIXME
+                        Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
+                        # Q, Constant([0, 0]), kappa(room_temp), rho(room_temp), cp(room_temp),
+                        heat_bcs
+                        )
+                    )
+            theta1 = stepper.step(theta0, t, dt)
+            end()
 
             # Do one Navier-Stokes time step.
             begin('Computing flux and pressure...')
@@ -252,20 +263,12 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                         # TODO use rho(theta)
                         rho(room_temp), mu,
                         # FIXME
-                        # f={
-                        #     0: rho(theta0) * g,
-                        #     1: rho(theta) * g
-                        #     },
-                        # f={
-                        #     0: rho(theta0) * g,
-                        #     1: rho(theta0) * g
-                        #     },
                         f={
-                            0: Constant([0, 0]),
-                            1: Constant([0, 0]),
+                            0: rho(theta0) * g,
+                            1: rho(theta0) * g
                             },
                         verbose=False,
-                        tol=1.0e-10
+                        tol=1.0e-12
                         )
             except RuntimeError as e:
                 print(e.message)
@@ -280,25 +283,25 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 continue
             end()
 
-            from dolfin import plot, interactive
-            plot(u0)
-            plot(p0)
-            plot(u1)
-            plot(p1)
-            interactive()
+            # from dolfin import plot, interactive
+            # plot(u0)
+            # plot(p0)
+            # u1.rename('u1', 'u1')
+            # plot(u1)
+            # p1.rename('p1', 'p1')
+            # plot(p1)
+            # interactive()
 
-            # Assigning and plotting. We do that here so all methods have access
-            # to `x` and `x_1`.
+            # Assigning and plotting. We do that here so all methods have
+            # access to `x` and `x_1`.
             theta0.assign(theta1)
             u0.assign(u1)
             p0.assign(p1)
 
             # write to file
-            theta_file.write(theta0, t)
-            u_file.write(u0, t)
-            p_file.write(p0, t)
-
-            exit(1)
+            xdmf_file.write(theta0, t)
+            xdmf_file.write(u0, t)
+            xdmf_file.write(p0, t)
 
             # from dolfin import plot, interactive
             # plot(theta0, title='theta')
@@ -308,25 +311,26 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             # interactive()
 
             # Adaptive stepsize control based solely on the velocity field.
-            # CFL-like condition for time step. This should be some sort of average
-            # of the temperature in the current step and the target step.
+            # CFL-like condition for time step. This should be some sort of
+            # average of the temperature in the current step and the target
+            # step.
             #
             # More on step-size control for Navier--Stokes:
             #
-            #     Adaptive time step control for the incompressible Navier-Stokes
-            #     equations;
+            #     Adaptive time step control for the incompressible
+            #     Navier-Stokes equations;
             #     Volker John, Joachim Rang;
             #     Comput. Methods Appl. Mech. Engrg. 199 (2010) 514-524;
             #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JR10.CMAME.pdf>.
             #
             # Section 3.3 in that paper notes that time-adaptivity for theta-
-            # schemes is too costly. They rather reside to DIRK- and Rosenbrock-
-            # methods.
+            # schemes is too costly. They rather reside to DIRK- and
+            # Rosenbrock- methods.
             #
             begin('Step size adaptation...')
-            u1, u2 = u.split()
+            ux, uy = u0.split()
             unorm = project(
-                    abs(u1) + abs(u2),
+                    abs(ux) + abs(uy),
                     Q,
                     form_compiler_parameters={'quadrature_degree': 4}
                     )
@@ -336,10 +340,10 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             target_dt = 0.2 * mesh.hmax() / unorm
             print('current dt: %e' % dt)
             print('target dt:  %e' % target_dt)
-            # alpha is the aggressiveness factor. The distance between the current
-            # step size and the target step size is reduced by |1-alpha|. Hence,
-            # if alpha==1 then dt_next==target_dt. Otherwise target_dt is
-            # approached more slowly.
+            # alpha is the aggressiveness factor. The distance between the
+            # current step size and the target step size is reduced by
+            # |1-alpha|. Hence, if alpha==1 then dt_next==target_dt. Otherwise
+            # target_dt is approached more slowly.
             alpha = 0.5
             dt = min(
                 dt_max,
@@ -354,4 +358,4 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=0.1, lcar=0.5e-2)
+    test_boussinesq(target_time=120.0, lcar=0.2e-2)

@@ -372,7 +372,7 @@ def _step(
                 inner(ui - u[0], v) * dx
                 - k/rho * 0.5 * (
                     _rhs_weak(u[0], v, f[0], rho, mu) +
-                    _rhs_weak(ui, v, f[1], rho, mu)
+                    _rhs_weak(ui,   v, f[1], rho, mu)
                     )
                 )
         else:
@@ -433,7 +433,7 @@ def _step(
                 'newton_solver': {
                     'maximum_iterations': 10,
                     'report': True,
-                    'absolute_tolerance': 1.0e-10,
+                    'absolute_tolerance': tol,
                     'relative_tolerance': 0.0,
                     'error_on_nonconvergence': True
                     # 'linear_solver': 'iterative',
