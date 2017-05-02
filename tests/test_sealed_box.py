@@ -4,7 +4,8 @@ import flow
 
 from dolfin import (
         Mesh, FunctionSpace, DirichletBC, VectorElement, FiniteElement,
-        Constant, plot, XDMFFile, project, SpatialCoordinate, sqrt, norm
+        Constant, plot, XDMFFile, project, SpatialCoordinate, sqrt, norm,
+        mpi_comm_world
         )
 import materials
 import meshio
@@ -12,10 +13,35 @@ import pygmsh
 import sys
 
 
+# def create_mesh(lcar):
+#     geom = pygmsh.Geometry()
+#
+#     geom.add_rectangle(0.0, 0.1, 0.0, 0.1, 0.0, lcar)
+#
+#     points, cells, point_data, cell_data, field_data = \
+#         pygmsh.generate_mesh(geom)
+#
+#     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
+#     meshio.write('test.xml', points, cells)
+#     return Mesh('test.xml')
+
+
 def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
-    geom.add_rectangle(0.0, 0.1, 0.0, 0.1, 0.0, lcar)
+    x0 = 0.0
+    x1 = 0.1
+    y0 = 0.0
+    y1 = 0.2
+
+    circle = geom.add_circle([0.05, 0.05, 0.0], 0.02, lcar, make_surface=False)
+
+    geom.add_rectangle(
+        x0, x1, y0, y1,
+        0.0,
+        lcar,
+        holes=[circle]
+        )
 
     points, cells, point_data, cell_data, field_data = \
         pygmsh.generate_mesh(geom)
@@ -55,7 +81,9 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
     #     )
     y = SpatialCoordinate(mesh)[1]
     u0 = project(Constant([0, 0]), FunctionSpace(mesh, W_element))
+    u0.rename('velocity', 'velocity')
     p0 = project(g * y, FunctionSpace(mesh, P_element))
+    p0.rename('pressure', 'pressure')
 
     rho = materials.water.density(T=293.0)
     # stepper = flow.navier_stokes.Chorin()
@@ -66,48 +94,48 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
     u_bcs = [DirichletBC(W2, (0.0, 0.0), 'on_boundary')]
     p_bcs = []
 
-    if show:
-        u_file = XDMFFile('velocity.xdmf')
-        u_file.parameters['flush_output'] = True
-        u_file.parameters['rewrite_function_mesh'] = False
-
     dt = 1.0e-2
     t = 0.0
 
-    k = 0
-    while k < num_steps:
-        k += 1
-        print
-        print('t = %f' % t)
-        if show:
-            plot(u0)
-            plot(p0)
-            u_file.write(u0, t)
+    with XDMFFile(mpi_comm_world(), 'sealed_box.xdmf') as xdmf_file:
+        xdmf_file.parameters['flush_output'] = True
+        xdmf_file.parameters['rewrite_function_mesh'] = False
 
-        u1, p1 = stepper.step(
-                dt,
-                {0: u0}, p0,
-                u_bcs, p_bcs,
-                rho, mu,
-                f={
-                    0: Constant((0.0, g)),
-                    1: Constant((0.0, g))
-                },
-                verbose=False,
-                tol=1.0e-10
+        k = 0
+        while k < num_steps:
+            k += 1
+            print
+            print('t = %f' % t)
+            if show:
+                plot(u0)
+                plot(p0)
+                xdmf_file.write(u0, t)
+                xdmf_file.write(p0, t)
+
+            u1, p1 = stepper.step(
+                    dt,
+                    {0: u0}, p0,
+                    u_bcs, p_bcs,
+                    rho, mu,
+                    f={
+                        0: Constant((0.0, g)),
+                        1: Constant((0.0, g))
+                    },
+                    verbose=False,
+                    tol=1.0e-10
+                    )
+            u0.assign(u1)
+            p0.assign(p1)
+            t += dt
+
+        ux, uy = u0.split()
+        unorm = project(
+                sqrt(ux**2 + uy**2),
+                FunctionSpace(mesh, 'Lagrange', 2),
+                form_compiler_parameters={'quadrature_degree': 4}
                 )
-        u0.assign(u1)
-        p0.assign(p1)
-        t += dt
-
-    ux, uy = u0.split()
-    unorm = project(
-            sqrt(ux**2 + uy**2),
-            FunctionSpace(mesh, 'Lagrange', 2),
-            form_compiler_parameters={'quadrature_degree': 4}
-            )
-    unorm = norm(unorm.vector(), 'linf')
-    assert unorm < 1.0e-15
+        unorm = norm(unorm.vector(), 'linf')
+        assert unorm < 1.0e-15
 
     return
 
