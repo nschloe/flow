@@ -7,7 +7,7 @@ jobs:
       # https://fenicsproject.org/download/
       # Use dev image for XDMF interface support
       # - image: quay.io/fenicsproject/stable:current
-      - image: quay.io/fenicsproject/dev:current
+      - image: quay.io/fenicsproject/dev
     steps:
       - run: apt-get update
       - run: apt-get install -y git gmsh
