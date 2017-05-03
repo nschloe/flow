@@ -15,8 +15,7 @@ jobs:
       - checkout
       - run: sudo -H pip3 install -r test_requirements.txt
       # The actual test
-      - run: ls
-      - run: PYTHONPATH=$PWD:$PYTHONPATH pytest --cov flow
+      - run: LD_LIBRARY_PATH=/home/fenics/local/lib:$LD_LIBRARY_PATH PYTHONPATH=$PWD:$PYTHONPATH pytest --cov flow
       # submit to codecov
       - run: apt-get install -y curl
       - run: bash <(curl -s https://codecov.io/bash)
