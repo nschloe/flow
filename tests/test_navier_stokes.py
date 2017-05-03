@@ -85,7 +85,8 @@ def problem_flat():
     # chooses p such that int(p) = 0. Also, numerical solutions have n.grad(p)
     # = 0 for non-penetration boundaries.  Make sure that the exact solution
     # respects those things to make error analysis easier.
-    p = sympy.cos(pi * x[1])
+    # p = sympy.cos(pi * x[1])
+    p = -x[1]
 
     solution = {
         'u': {'value': u, 'degree': 1},
@@ -283,14 +284,21 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
         divu1 = Function(P)
         for j, dt in enumerate(Dt):
             # Prepare previous states for multistepping.
-            u = Expression(
+            u_1 = Expression(
+                sol_u.cppcode,
+                degree=_truncate_degree(solution['u']['degree']),
+                t=-dt,
+                cell=cell_type
+                )
+            u_1 = project(u_1, W)
+            u0 = Expression(
                 sol_u.cppcode,
                 degree=_truncate_degree(solution['u']['degree']),
                 t=0.0,
                 # t=0.5*dt,
                 cell=cell_type
                 )
-            u0 = project(u, W)
+            u0 = project(u0, W)
             sol_u.t = dt
             u_bcs = [DirichletBC(W, sol_u, 'on_boundary')]
             sol_p.t = dt
@@ -300,11 +308,10 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
             fenics_rhs1.t = dt
             u1, p1 = method.step(
                     dt,
-                    u0, p0,
+                    {-1: u_1, 0: u0}, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
                     rho=rho, mu=mu,
-                    f0=fenics_rhs0,
-                    f1=fenics_rhs1,
+                    f={0: fenics_rhs0, 1: fenics_rhs1},
                     verbose=False,
                     tol=1.0e-10
                     )
@@ -395,8 +402,33 @@ def test_chorin(problem, stabilization, tol=1.0e-10):
 def test_ipcs(problem, stabilization, tol=1.0e-10):
     assert_time_order(
         problem,
-        navsto.IPCS(stabilization=stabilization, theta=1.0),
+        navsto.IPCS(
+            stabilization=stabilization,
+            time_step_method='backward euler'
+            ),
         tol
+        )
+    return
+
+
+@pytest.mark.parametrize('problem', [
+    # problem_flat,
+    # problem_whirl,
+    problem_guermond1,
+    # problem_guermond2,
+    # problem_taylor,
+    ])
+@pytest.mark.parametrize('stabilization', [True, False])
+def test_rotational(problem, stabilization, tol=1.0e-10):
+    assert_time_order(
+        problem,
+        navsto.Rotational(
+            stabilization=stabilization,
+            time_step_method='backward euler'
+            ),
+        tol,
+        mesh_sizes=[32, 64],
+        Dt=[1.0e-2, 0.5e-2],
         )
     return
 
@@ -474,17 +506,20 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
 
 
 if __name__ == '__main__':
-    mesh_sizes = [8, 16, 32, 64]
+    mesh_sizes = [8, 16, 32]
     Dt = [0.5**k for k in range(20)]
     errors = compute_time_errors(
         # problem_flat,
         # problem_whirl,
-        # problem_guermond1,
-        problem_guermond2,
+        problem_guermond1,
+        # problem_guermond2,
         # problem_taylor,
         #
         # navsto.Chorin(),
-        navsto.IPCS(theta=1.0),
+        # navsto.IPCS(time_step_method='forward euler'),
+        # navsto.IPCS(time_step_method='backward euler'),
+        # navsto.IPCS(time_step_method='bdf2'),
+        navsto.Rotational(),
         mesh_sizes, Dt
         )
     show_timeorder_info(Dt, mesh_sizes, errors)

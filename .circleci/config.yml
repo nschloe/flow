@@ -5,15 +5,21 @@ jobs:
     working_directory: ~/flow
     docker:
       # https://fenicsproject.org/download/
-      - image: quay.io/fenicsproject/stable:current
+      # Use dev image for XDMF interface support
+      # - image: quay.io/fenicsproject/stable:current
+      - image: quay.io/fenicsproject/dev
+        user: fenics
+        environment:
+          LD_LIBRARY_PATH: /home/fenics/local/lib
+          CMAKE_PREFIX_PATH: /home/fenics/local
     steps:
-      - run: apt-get update
-      - run: apt-get install -y git gmsh
-      - run: sudo -H pip2 install -U pytest pytest-cov lxml
+      - run: sudo apt-get update
+      - run: sudo apt-get install -y git gmsh
+      - run: sudo -H pip3 install -U pytest pytest-cov lxml
       - checkout
-      - run: sudo -H pip2 install -r test_requirements.txt
+      - run: sudo -H pip3 install -r test_requirements.txt
       # The actual test
       - run: PYTHONPATH=$PWD:$PYTHONPATH pytest --cov flow
       # submit to codecov
-      - run: apt-get install -y curl
+      - run: sudo apt-get install -y curl
       - run: bash <(curl -s https://codecov.io/bash)

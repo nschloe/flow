@@ -5,7 +5,7 @@ import flow
 from dolfin import (
         Mesh, SubDomain, FunctionSpace, DirichletBC, VectorElement,
         FiniteElement, Constant, plot, begin, end, project, norm, XDMFFile,
-        sqrt, Expression
+        sqrt, Expression, mpi_comm_world
         )
 import materials
 import meshio
@@ -166,10 +166,13 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         tol=1.0e-13,
         max_iter=10000
         )
+    u0.rename('velocity', 'velocity')
+    p0.rename('pressure', 'pressure')
 
     rho = materials.water.density(T=293.0)
     # stepper = flow.navier_stokes.IPCS(theta=1.0)
-    stepper = flow.navier_stokes.Chorin()
+    # stepper = flow.navier_stokes.Chorin()
+    stepper = flow.navier_stokes.Rotational()
 
     W2 = u0.function_space()
     P2 = p0.function_space()
@@ -187,86 +190,89 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         DirichletBC(P2, 0.0, right_boundary)
         ]
 
-    if show:
-        u_file = XDMFFile('velocity.xdmf')
-        u_file.parameters['flush_output'] = True
-        u_file.parameters['rewrite_function_mesh'] = False
-
     # Report Reynolds number.
     # https://en.wikipedia.org/wiki/Reynolds_number#Sphere_in_a_fluid
     reynolds = entrance_velocity * obstacle_diameter * rho / mu
     print('Reynolds number:  %e' % reynolds)
 
     dt = 1.0e-5
-    dt_max = 0.1
+    dt_max = 1.0
     t = 0.0
 
-    k = 0
-    while k < num_steps:
-        k += 1
-        print
-        print('t = %f' % t)
-        if show:
-            plot(u0)
-            plot(p0)
-            u_file.write(u0, t)
+    with XDMFFile(mpi_comm_world(), 'karman.xdmf') as xdmf_file:
+        xdmf_file.parameters['flush_output'] = True
+        xdmf_file.parameters['rewrite_function_mesh'] = False
 
-        u1, p1 = stepper.step(
-                dt,
-                u0, p0,
-                u_bcs, p_bcs,
-                rho, mu,
-                f0=Constant((0.0, 0.0)),
-                f1=Constant((0.0, 0.0)),
-                verbose=False,
-                tol=1.0e-10
+        k = 0
+        while k < num_steps:
+            k += 1
+            print
+            print('t = %f' % t)
+            if show:
+                plot(u0)
+                plot(p0)
+                xdmf_file.write(u0, t)
+                xdmf_file.write(p0, t)
+
+            u1, p1 = stepper.step(
+                    dt,
+                    {0: u0}, p0,
+                    u_bcs, p_bcs,
+                    rho, mu,
+                    f={
+                        0: Constant((0.0, 0.0)),
+                        1: Constant((0.0, 0.0))
+                    },
+                    verbose=False,
+                    tol=1.0e-10
+                    )
+            u0.assign(u1)
+            p0.assign(p1)
+
+            # Adaptive stepsize control based solely on the velocity field.
+            # CFL-like condition for time step. This should be some sort of
+            # average of the temperature in the current step and the target
+            # step.
+            #
+            # More on step-size control for Navier--Stokes:
+            #
+            #     Adaptive time step control for the incompressible
+            #     Navier-Stokes equations;
+            #     Volker John, Joachim Rang;
+            #     Comput. Methods Appl. Mech. Engrg. 199 (2010) 514-524;
+            #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JR10.CMAME.pdf>.
+            #
+            # Section 3.3 in that paper notes that time-adaptivity for theta-
+            # schemes is too costly. They rather reside to DIRK- and
+            # Rosenbrock-methods.
+            #
+            begin('Step size adaptation...')
+            ux, uy = u0.split()
+            unorm = project(
+                    sqrt(ux**2 + uy**2),
+                    FunctionSpace(mesh, 'Lagrange', 2),
+                    form_compiler_parameters={'quadrature_degree': 4}
+                    )
+            unorm = norm(unorm.vector(), 'linf')
+
+            # print('||u||_inf = %e' % unorm)
+            # Some smooth step-size adaption.
+            target_dt = 1.0 * mesh.hmax() / unorm
+            print('current dt: %e' % dt)
+            print('target dt:  %e' % target_dt)
+            # alpha is the aggressiveness factor. The distance between the
+            # current step size and the target step size is reduced by
+            # |1-alpha|. Hence, if alpha==1 then dt_next==target_dt. Otherwise
+            # target_dt is approached more slowly.
+            alpha = 0.5
+            dt = min(
+                dt_max,
+                # At most double the step size from step to step.
+                dt * min(2.0, 1.0 + alpha*(target_dt - dt)/dt)
                 )
-        u0.assign(u1)
-        p0.assign(p1)
-
-        # Adaptive stepsize control based solely on the velocity field.
-        # CFL-like condition for time step. This should be some sort of average
-        # of the temperature in the current step and the target step.
-        #
-        # More on step-size control for Navier--Stokes:
-        #
-        #     Adaptive time step control for the incompressible Navier-Stokes
-        #     equations;
-        #     Volker John, Joachim Rang;
-        #     Comput. Methods Appl. Mech. Engrg. 199 (2010) 514-524;
-        #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JR10.CMAME.pdf>.
-        #
-        # Section 3.3 in that paper notes that time-adaptivity for theta-
-        # schemes is too costly. They rather reside to DIRK- and Rosenbrock-
-        # methods.
-        #
-        begin('Step size adaptation...')
-        ux, uy = u0.split()
-        unorm = project(
-                sqrt(ux**2 + uy**2),
-                FunctionSpace(mesh, 'Lagrange', 2),
-                form_compiler_parameters={'quadrature_degree': 4}
-                )
-        unorm = norm(unorm.vector(), 'linf')
-
-        # print('||u||_inf = %e' % unorm)
-        # Some smooth step-size adaption.
-        target_dt = 1.0 * mesh.hmax() / unorm
-        print('current dt: %e' % dt)
-        print('target dt:  %e' % target_dt)
-        # alpha is the aggressiveness factor. The distance between the current
-        # step size and the target step size is reduced by |1-alpha|. Hence,
-        # if alpha==1 then dt_next==target_dt. Otherwise target_dt is
-        # approached more slowly.
-        alpha = 0.5
-        dt = min(
-            dt_max,
-            # At most double the step size from step to step.
-            dt * min(2.0, 1.0 + alpha*(target_dt - dt)/dt)
-            )
-        print('next dt:    %e' % dt)
-        t += dt
-        end()
+            print('next dt:    %e' % dt)
+            t += dt
+            end()
 
     return
 
