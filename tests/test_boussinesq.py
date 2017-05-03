@@ -10,7 +10,7 @@ from dolfin import (
     begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
     FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
     TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver,
-    SpatialCoordinate, mpi_comm_world
+    SpatialCoordinate, mpi_comm_world, info
     )
 import materials
 import meshio
@@ -170,7 +170,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
     # dt0 = 0.2 * mesh.hmin() / umax
     t = 0.0
 
-    max_heater_temp = 300.0
+    max_heater_temp = 320.0
 
     # Gravity accelleration.
     accelleration_constant = -9.81
@@ -229,133 +229,191 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 )
             # heater_temp = room_temp
 
-            # Do one heat time step.
-            begin('Computing heat...')
-            heat_bcs = [
-                DirichletBC(Q, heater_temp, hot_boundary),
-                DirichletBC(Q, room_temp, cool_boundary),
-                ]
-            # Use all quantities at room temperature to avoid nonlinearity
-            stepper = parabolic.ImplicitEuler(
-                    Heat(
-                        # FIXME
-                        Q, u0, kappa(room_temp), rho(room_temp), cp(room_temp),
-                        # Q, Constant([0, 0]), kappa(room_temp), rho(room_temp), cp(room_temp),
-                        heat_bcs
+            # Velocity and heat and connected by
+            #
+            #    theta1 = F_theta(u1, theta0)
+            #    u1, p1 = F_u(u0, p0, theta1)
+            #
+            # One can either replace u1, theta1 on the right-hand side by u0,
+            # theta0, respectively, or wrap the whole thing in a Banach
+            # iteration 'a la
+            #
+            #    theta = F_theta(u_prev, theta0)
+            #    (u, p) = F_u(u0, p0, theta_prev)
+            #
+            # and do that until the residuals are close to 0.
+            u_prev = Function(u0.function_space())
+            u_prev.assign(u0)
+
+            theta_prev = Function(theta0.function_space())
+            theta_prev.assign(theta0)
+            is_banach_converged = False
+            banach_tol = 1.0e-5
+            max_banach_steps = 10
+            banach_step = 0
+            while not is_banach_converged:
+                banach_step += 1
+                if banach_step > max_banach_steps:
+                    info('\nBanach solver failed to converge. '
+                         'Decrease time step from %e to %e and try again.\n' %
+                         (dt, 0.25*dt)
+                         )
+                    dt *= 0.25
+                    end()  # time step
+                    break
+                begin('Banach step %d:' % banach_step)
+                # Do one heat time step.
+                begin('Computing heat...')
+                heat_bcs = [
+                    DirichletBC(Q, heater_temp, hot_boundary),
+                    DirichletBC(Q, room_temp, cool_boundary),
+                    ]
+                # Use all quantities at room temperature to avoid nonlinearity
+                stepper = parabolic.ImplicitEuler(
+                        Heat(
+                            Q, u_prev,
+                            kappa(room_temp), rho(room_temp), cp(room_temp),
+                            heat_bcs
+                            )
                         )
-                    )
-            theta1 = stepper.step(theta0, t, dt)
-            end()
+                theta1 = stepper.step(theta0, t, dt)
+                end()
 
-            # Do one Navier-Stokes time step.
-            begin('Computing flux and pressure...')
-            # stepper = flow.navier_stokes.Chorin()
-            stepper = flow.navier_stokes.IPCS()
-            # stepper = flow.navier_stokes.Rotational()
-            W = u0.function_space()
-            u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
-            p_bcs = []
-            try:
-                u1, p1 = stepper.step(
-                        dt,
-                        {0: u0}, p0,
-                        u_bcs, p_bcs,
-                        # TODO use rho(theta)
-                        rho(room_temp), mu,
-                        # FIXME
-                        f={
-                            0: rho(theta0) * g,
-                            1: rho(theta0) * g
-                            },
-                        verbose=False,
-                        tol=1.0e-12
+                # Do one Navier-Stokes time step.
+                begin('Computing flux and pressure...')
+                # stepper = flow.navier_stokes.Chorin()
+                stepper = flow.navier_stokes.IPCS()
+                # stepper = flow.navier_stokes.Rotational()
+                W = u0.function_space()
+                u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
+                p_bcs = []
+                try:
+                    u1, p1 = stepper.step(
+                            dt,
+                            {0: u0}, p0,
+                            u_bcs, p_bcs,
+                            # TODO use rho(theta)
+                            rho(room_temp), mu,
+                            # FIXME
+                            f={
+                                0: rho(theta_prev) * g,
+                                1: rho(theta_prev) * g
+                                },
+                            verbose=False,
+                            tol=1.0e-12
+                            )
+                except RuntimeError as e:
+                    info(e.message)
+                    info('Navier--Stokes solver failed to converge. '
+                         'Decrease time step from %e to %e and try again.' %
+                         (dt, 0.5*dt)
+                         )
+                    dt *= 0.5
+                    end()  # navier-stokes
+                    end()  # banach step
+                    end()  # time step
+                    # http://stackoverflow.com/a/1859099/353337
+                    break
+                end()  # navier-stokes
+
+                u1x, u1y = u1.split()
+                uprevx, uprevy = u_prev.split()
+                unorm = project(
+                        abs(u1x - uprevx) + abs(u1y - uprevy),
+                        Q,
+                        form_compiler_parameters={'quadrature_degree': 4}
                         )
-            except RuntimeError as e:
-                print(e.message)
-                print('Navier--Stokes solver failed to converge. '
-                      'Decrease time step from %e to %e and try again.' %
-                      (dt, 0.5*dt)
-                      )
-                dt *= 0.5
-                end()
-                end()
-                end()
-                continue
-            end()
+                u_diff_norm = norm(unorm.vector(), 'linf')
 
-            # from dolfin import plot, interactive
-            # plot(u0)
-            # plot(p0)
-            # u1.rename('u1', 'u1')
-            # plot(u1)
-            # p1.rename('p1', 'p1')
-            # plot(p1)
-            # interactive()
+                theta_diff = Function(theta1.function_space())
+                theta_diff.vector()[:] = theta1.vector() - theta_prev.vector()
+                theta_diff_norm = norm(theta_diff.vector(), 'linf')
 
-            # Assigning and plotting. We do that here so all methods have
-            # access to `x` and `x_1`.
-            theta0.assign(theta1)
-            u0.assign(u1)
-            p0.assign(p1)
+                info('Banach residuals:')
+                info('   ||u - u_prev||         = %e' % u_diff_norm)
+                info('   ||theta - theta_prev|| = %e' % theta_diff_norm)
 
-            # write to file
-            xdmf_file.write(theta0, t)
-            xdmf_file.write(u0, t)
-            xdmf_file.write(p0, t)
+                is_banach_converged = \
+                    u_diff_norm < banach_tol and theta_diff_norm < banach_tol
 
-            # from dolfin import plot, interactive
-            # plot(theta0, title='theta')
-            # plot(u0, title='u')
-            # # plot(div(u), title='div(u)', rescale=True)
-            # plot(p0, title='p')
-            # interactive()
+                u_prev.assign(u1)
+                theta_prev.assign(theta1)
+                end()  # banach step
+            else:
+                # from dolfin import plot, interactive
+                # plot(u0)
+                # plot(p0)
+                # u1.rename('u1', 'u1')
+                # plot(u1)
+                # p1.rename('p1', 'p1')
+                # plot(p1)
+                # interactive()
 
-            # Adaptive stepsize control based solely on the velocity field.
-            # CFL-like condition for time step. This should be some sort of
-            # average of the temperature in the current step and the target
-            # step.
-            #
-            # More on step-size control for Navier--Stokes:
-            #
-            #     Adaptive time step control for the incompressible
-            #     Navier-Stokes equations;
-            #     Volker John, Joachim Rang;
-            #     Comput. Methods Appl. Mech. Engrg. 199 (2010) 514-524;
-            #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JR10.CMAME.pdf>.
-            #
-            # Section 3.3 in that paper notes that time-adaptivity for theta-
-            # schemes is too costly. They rather reside to DIRK- and
-            # Rosenbrock- methods.
-            #
-            begin('Step size adaptation...')
-            ux, uy = u0.split()
-            unorm = project(
-                    abs(ux) + abs(uy),
-                    Q,
-                    form_compiler_parameters={'quadrature_degree': 4}
+                # Assigning and plotting. We do that here so all methods have
+                # access to `x` and `x_1`.
+                theta0.assign(theta1)
+                u0.assign(u1)
+                p0.assign(p1)
+
+                # write to file
+                xdmf_file.write(theta0, t)
+                xdmf_file.write(u0, t)
+                xdmf_file.write(p0, t)
+
+                # from dolfin import plot, interactive
+                # plot(theta0, title='theta')
+                # plot(u0, title='u')
+                # # plot(div(u), title='div(u)', rescale=True)
+                # plot(p0, title='p')
+                # interactive()
+
+                end()  # time step
+
+                # Adaptive stepsize control based solely on the velocity field.
+                # CFL-like condition for time step. This should be some sort of
+                # average of the temperature in the current step and the target
+                # step.
+                #
+                # More on step-size control for Navier--Stokes:
+                #
+                #     Adaptive time step control for the incompressible
+                #     Navier-Stokes equations;
+                #     Volker John, Joachim Rang;
+                #     Comput. Methods Appl. Mech. Engrg. 199 (2010) 514-524;
+                #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JR10.CMAME.pdf>.
+                #
+                # Section 3.3 in that paper notes that time-adaptivity for
+                # theta- schemes is too costly. They rather reside to DIRK- and
+                # Rosenbrock- methods.
+                #
+                begin('\nStep size adaptation...')
+                ux, uy = u0.split()
+                unorm = project(
+                        abs(ux) + abs(uy),
+                        Q,
+                        form_compiler_parameters={'quadrature_degree': 4}
+                        )
+                unorm = norm(unorm.vector(), 'linf')
+                # print('||u||_inf = %e' % unorm)
+                # Some smooth step-size adaption.
+                target_dt = 0.2 * mesh.hmax() / unorm
+                info('current dt: %e' % dt)
+                info('target dt:  %e' % target_dt)
+                # alpha is the aggressiveness factor. The distance between the
+                # current step size and the target step size is reduced by
+                # |1-alpha|. Hence, if alpha==1 then dt_next==target_dt.
+                # Otherwise target_dt is approached more slowly.
+                alpha = 0.5
+                dt = min(
+                    dt_max,
+                    # At most double the step size from step to step.
+                    dt * min(2.0, 1.0 + alpha*(target_dt - dt)/dt)
                     )
-            unorm = norm(unorm.vector(), 'linf')
-            # print('||u||_inf = %e' % unorm)
-            # Some smooth step-size adaption.
-            target_dt = 0.2 * mesh.hmax() / unorm
-            print('current dt: %e' % dt)
-            print('target dt:  %e' % target_dt)
-            # alpha is the aggressiveness factor. The distance between the
-            # current step size and the target step size is reduced by
-            # |1-alpha|. Hence, if alpha==1 then dt_next==target_dt. Otherwise
-            # target_dt is approached more slowly.
-            alpha = 0.5
-            dt = min(
-                dt_max,
-                # At most double the step size from step to step.
-                dt * min(2.0, 1.0 + alpha*(target_dt - dt)/dt)
-                )
-            print('next dt:    %e' % dt)
-            t += dt
-            end()
-            end()
+                info('next dt:    %e\n' % dt)
+                t += dt
+                end()
     return
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=120.0, lcar=0.2e-2)
+    test_boussinesq(target_time=120.0, lcar=0.3e-2)
