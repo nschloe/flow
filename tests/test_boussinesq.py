@@ -249,8 +249,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             theta_prev.assign(theta0)
             is_banach_converged = False
             banach_tol = 1.0e-5
-            max_banach_steps = 10
-            target_banach_steps = 5
+            max_banach_steps = 50
+            target_banach_steps = 25
             banach_step = 0
             while not is_banach_converged:
                 banach_step += 1
@@ -295,13 +295,12 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                             u_bcs, p_bcs,
                             # TODO use rho(theta)
                             rho(room_temp), mu,
-                            # FIXME
                             f={
                                 0: rho(theta_prev) * g,
                                 1: rho(theta_prev) * g
                                 },
                             verbose=False,
-                            tol=1.0e-12
+                            tol=1.0e-10
                             )
                 except RuntimeError as e:
                     info(e.message)
