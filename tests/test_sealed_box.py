@@ -136,7 +136,7 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
                 form_compiler_parameters={'quadrature_degree': 4}
                 )
         unorm = norm(unorm.vector(), 'linf')
-        assert unorm < 1.0e-15
+        assert unorm < 1.0e-14
 
     return
 
