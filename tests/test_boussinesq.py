@@ -250,6 +250,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             is_banach_converged = False
             banach_tol = 1.0e-5
             max_banach_steps = 10
+            target_banach_steps = 5
             banach_step = 0
             while not is_banach_converged:
                 banach_step += 1
@@ -369,12 +370,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
 
                 end()  # time step
 
-                # Adaptive stepsize control based solely on the velocity field.
-                # CFL-like condition for time step. This should be some sort of
-                # average of the temperature in the current step and the target
-                # step.
-                #
-                # More on step-size control for Navier--Stokes:
+                begin('\nStep size adaptation...')
+                # Step-size control can be done purely based on the velocity
+                # field; see
                 #
                 #     Adaptive time step control for the incompressible
                 #     Navier-Stokes equations;
@@ -386,17 +384,23 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 # theta- schemes is too costly. They rather reside to DIRK- and
                 # Rosenbrock- methods.
                 #
-                begin('\nStep size adaptation...')
-                ux, uy = u0.split()
-                unorm = project(
-                        abs(ux) + abs(uy),
-                        Q,
-                        form_compiler_parameters={'quadrature_degree': 4}
-                        )
-                unorm = norm(unorm.vector(), 'linf')
-                # print('||u||_inf = %e' % unorm)
-                # Some smooth step-size adaption.
-                target_dt = 0.2 * mesh.hmax() / unorm
+                # Implementation:
+                #   ux, uy = u0.split()
+                #   unorm = project(
+                #           abs(ux) + abs(uy),
+                #           Q,
+                #           form_compiler_parameters={'quadrature_degree': 4}
+                #           )
+                #   unorm = norm(unorm.vector(), 'linf')
+                #   # print('||u||_inf = %e' % unorm)
+                #   # Some smooth step-size adaption.
+                #   target_dt = 0.2 * mesh.hmax() / unorm
+
+                # In our case, step failures are almost always because Banach
+                # didn't converge. Hence, design a step size adaptation based
+                # on the Banach steps.
+                target_dt = dt * target_banach_steps / banach_step
+
                 info('current dt: %e' % dt)
                 info('target dt:  %e' % target_dt)
                 # alpha is the aggressiveness factor. The distance between the
@@ -412,6 +416,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 info('next dt:    %e\n' % dt)
                 t += dt
                 end()
+
     return
 
 
