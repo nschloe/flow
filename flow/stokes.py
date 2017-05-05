@@ -128,8 +128,8 @@ def solve(
         prec = mu * inner(grad(u), grad(v))*dx \
              - p*q*dx
         M, _ = assemble_system(prec, L, bcs)
-        # solver = KrylovSolver('tfqmr', 'amg')
-        solver = KrylovSolver('gmres', 'amg')
+        # solver = KrylovSolver('tfqmr', 'hypre_amg')
+        solver = KrylovSolver('gmres', 'hypre_amg')
         solver.set_operators(A, M)
 
     solver.parameters['monitor_convergence'] = verbose
