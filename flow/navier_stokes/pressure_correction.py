@@ -518,11 +518,7 @@ def _step(
               solver_parameters={
                   'linear_solver': 'iterative',
                   'symmetric': True,
-                  # 'preconditioner': 'amg',
-                  # We'd love to use AMG here, but
-                  # <https://bitbucket.org/fenics-project/docker/issues/61/petsc-vectorfunctionspace-amg-malloc>
-                  # prevents it.
-                  'preconditioner': 'ilu',
+                  'preconditioner': 'hypre_amg',
                   'krylov_solver': {
                       'relative_tolerance': tol,
                       'absolute_tolerance': 0.0,
