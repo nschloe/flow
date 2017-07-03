@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-import flow
+import os
 
 from dolfin import (
         Mesh, SubDomain, FunctionSpace, DirichletBC, VectorElement,
@@ -10,7 +10,8 @@ from dolfin import (
 import materials
 import meshio
 import pygmsh
-import sys
+
+import flow
 
 x0 = 0.0
 x1 = 0.6
@@ -23,20 +24,28 @@ entrance_velocity = 0.01
 def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
-    # slightly off-center circle
-    circle = geom.add_circle(
-        [0.1, 1.0e-2, 0.0], 0.5 * obstacle_diameter, lcar, make_surface=False
-        )
+    cache_file = 'karman.msh'
+    if os.path.isfile(cache_file):
+        print('Using mesh from cache \'{}\'.'.format(cache_file))
+        points, cells, _, _, _ = meshio.read(cache_file)
+    else:
+        # slightly off-center circle
+        circle = geom.add_circle(
+            [0.1, 1.0e-2, 0.0], 0.5 * obstacle_diameter, lcar,
+            make_surface=False
+            )
 
-    geom.add_rectangle(
-        x0, x1, y0, y1,
-        0.0,
-        lcar,
-        holes=[circle]
-        )
+        geom.add_rectangle(
+            x0, x1, y0, y1,
+            0.0,
+            lcar,
+            holes=[circle]
+            )
 
-    points, cells, point_data, cell_data, field_data = \
-        pygmsh.generate_mesh(geom)
+        points, cells, point_data, cell_data, field_data = \
+            pygmsh.generate_mesh(geom)
+
+        meshio.write(cache_file, points, cells)
 
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
@@ -278,4 +287,4 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
 
 
 if __name__ == '__main__':
-    test_karman(lcar=5.0e-3, num_steps=sys.maxint, show=True)
+    test_karman(lcar=5.0e-3, num_steps=100000, show=True)

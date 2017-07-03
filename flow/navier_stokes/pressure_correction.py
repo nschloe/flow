@@ -155,7 +155,7 @@ def _pressure_poisson(
         ):
     '''Solve the pressure Poisson equation
 
-        - \Delta phi = -div(u),
+        - \\Delta phi = -div(u),
         boundary conditions,
 
     for p with
