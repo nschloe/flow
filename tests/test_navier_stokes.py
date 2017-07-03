@@ -400,7 +400,7 @@ def test_chorin(problem):
     problem_guermond2,
     # problem_taylor,
     ])
-def test_ipcs(problem, tol=1.0e-10):
+def test_ipcs(problem):
     assert_time_order(
         problem,
         navsto.IPCS(time_step_method='backward euler'),
