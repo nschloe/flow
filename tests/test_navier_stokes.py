@@ -403,10 +403,9 @@ def test_chorin(problem):
 def test_ipcs(problem, tol=1.0e-10):
     assert_time_order(
         problem,
-        navsto.IPCS(
-            time_step_method='backward euler'
-            ),
-        tol
+        navsto.IPCS(time_step_method='backward euler'),
+        mesh_sizes=[8, 16, 32],
+        Dt=[0.5**k for k in range(2)]
         )
     return
 
@@ -421,9 +420,7 @@ def test_ipcs(problem, tol=1.0e-10):
 def test_rotational(problem):
     assert_time_order(
         problem,
-        navsto.Rotational(
-            time_step_method='backward euler'
-            ),
+        navsto.Rotational(time_step_method='backward euler'),
         mesh_sizes=[32, 64],
         Dt=[1.0e-2, 0.5e-2],
         )
@@ -432,13 +429,9 @@ def test_rotational(problem):
 
 def assert_time_order(
         problem, method,
-        mesh_sizes=None,
-        Dt=None
+        mesh_sizes,
+        Dt
         ):
-    if mesh_sizes is None:
-        mesh_sizes = [8, 16, 32]
-    if Dt is None:
-        Dt = [0.5**k for k in range(2)]
     errors = compute_time_errors(problem, method, mesh_sizes, Dt)
     orders = {
         key: compute_numerical_order_of_convergence(Dt, errors[key].T).T
