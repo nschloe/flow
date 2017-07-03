@@ -146,9 +146,8 @@ def _rhs_weak(u, v, f, rho, mu, p0):
         # - rho*inner(grad(u)*u, v) * dx
         - rho * 0.5 * (inner(grad(u)*u, v) - inner(grad(v)*u, u)) * dx
         # - mu * inner(grad(u), grad(v)) * dx
-        # + inner(grad(p0), v) * dx
+        # - inner(grad(p0), v) * dx
         - inner(sigma(u, p0), epsilon(v)) * dx
-        #
         - inner(p0*normal, v) * ds
         + mu*inner(grad(u).T*normal, v)*ds
         )
@@ -270,7 +269,6 @@ def _compute_pressure(
         alpha, rho, dt, mu, ui,
         div_ui,
         p_bcs=None,
-        p_n=None,
         p_function_space=None,
         rotational_form=False,
         tol=1.0e-10,
@@ -328,11 +326,7 @@ def _compute_pressure(
     a2 = dot(grad(p), grad(q)) * dx
     L2 = -alpha * rho/dt * div_ui * q * dx
 
-    if p0:
-        L2 += dot(grad(p0), grad(q)) * dx
-    # if p_n:
-    #     n = FacetNormal(P.mesh())
-    #     L2 += dot(n, p_n) * q * ds
+    L2 += dot(grad(p0), grad(q)) * dx
 
     if rotational_form:
         L2 -= mu * dot(grad(div_ui), grad(q)) * dx
@@ -456,9 +450,7 @@ def _compute_velocity_correction(
     u2 = TrialFunction(u[0].function_space())
     a3 = inner(u2, v) * dx
 
-    phi = p1
-    if p0:
-        phi -= p0
+    phi = p1 - p0
     if rotational_form:
         phi += mu * div(ui)
 
@@ -522,7 +514,6 @@ def _step(
                 alpha, rho, dt, mu, ui,
                 div_ui=div(ui),
                 p_bcs=p_bcs,
-                p_n=None,
                 rotational_form=rotational_form,
                 tol=tol,
                 verbose=verbose

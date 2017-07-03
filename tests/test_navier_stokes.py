@@ -6,7 +6,7 @@ import flow.navier_stokes as navsto
 from dolfin import (
     UnitSquareMesh, triangle, RectangleMesh, pi, Point, Expression, assemble,
     dx, errornorm, plot, interactive, interpolate, project, DirichletBC,
-    Function, FunctionSpace, VectorFunctionSpace
+    Function, FunctionSpace, VectorFunctionSpace, Constant
     )
 import matplotlib.pyplot as plt
 import numpy
@@ -307,10 +307,10 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
             fenics_rhs0.t = 0.0
             fenics_rhs1.t = dt
             u1, p1 = method.step(
-                    dt,
+                    Constant(dt),
                     {-1: u_1, 0: u0}, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
-                    rho=rho, mu=mu,
+                    rho=Constant(rho), mu=Constant(mu),
                     f={0: fenics_rhs0, 1: fenics_rhs1},
                     verbose=False,
                     tol=1.0e-10
