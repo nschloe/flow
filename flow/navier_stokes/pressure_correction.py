@@ -146,6 +146,7 @@ def _rhs_weak(u, v, f, rho, mu, p0):
         # - rho*inner(grad(u)*u, v) * dx
         - rho * 0.5 * (inner(grad(u)*u, v) - inner(grad(v)*u, u)) * dx
         # - mu * inner(grad(u), grad(v)) * dx
+        # + inner(grad(p0), v) * dx
         - inner(sigma(u, p0), epsilon(v)) * dx
         #
         - inner(p0*normal, v) * ds
@@ -204,9 +205,6 @@ def _compute_tentative_velocity(
     #         inner(1.5 * ui - 2 * u[0] + 0.5 * u[-1], v) * dx
     #         - dt/rho * _rhs_weak(ui, v, f[1], rho, mu, p0)
     #         )
-
-    if p0:
-        F1 += dt/rho * inner(grad(p0), v) * dx
 
     # Get linearization and solve nonlinear system.
     # If the scheme is fully explicit (theta=0.0), then the system is

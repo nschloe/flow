@@ -179,8 +179,8 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     p0.rename('pressure', 'pressure')
 
     rho = materials.water.density(T=293.0)
-    # stepper = flow.navier_stokes.IPCS(theta=1.0)
     # stepper = flow.navier_stokes.Chorin()
+    # stepper = flow.navier_stokes.IPCS()
     stepper = flow.navier_stokes.Rotational()
 
     W2 = u0.function_space()
@@ -190,6 +190,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         DirichletBC(W2, (0.0, 0.0), lower_boundary),
         DirichletBC(W2, (0.0, 0.0), obstacle_boundary),
         DirichletBC(W2.sub(0), inflow, left_boundary),
+        #
         DirichletBC(W2.sub(0), outflow, right_boundary),
         ]
     # TODO settting the outflow _and_ the pressure at the outlet is actually
@@ -224,10 +225,10 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
                 xdmf_file.write(p0, t)
 
             u1, p1 = stepper.step(
-                    dt,
+                    Constant(dt),
                     {0: u0}, p0,
                     u_bcs, p_bcs,
-                    rho, mu,
+                    Constant(rho), Constant(mu),
                     f={
                         0: Constant((0.0, 0.0)),
                         1: Constant((0.0, 0.0))
