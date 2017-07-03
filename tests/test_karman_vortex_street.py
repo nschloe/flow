@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 #
-import flow
+from __future__ import print_function
+
+import os
 
 from dolfin import (
         Mesh, SubDomain, FunctionSpace, DirichletBC, VectorElement,
@@ -10,7 +12,8 @@ from dolfin import (
 import materials
 import meshio
 import pygmsh
-import sys
+
+import flow
 
 x0 = 0.0
 x1 = 0.6
@@ -23,20 +26,27 @@ entrance_velocity = 0.01
 def create_mesh(lcar):
     geom = pygmsh.Geometry()
 
-    # slightly off-center circle
-    circle = geom.add_circle(
-        [0.1, 1.0e-2, 0.0], 0.5 * obstacle_diameter, lcar, make_surface=False
-        )
+    cache_file = 'karman.msh'
+    if os.path.isfile(cache_file):
+        print('Using mesh from cache \'{}\'.'.format(cache_file))
+        points, cells, _, _, _ = meshio.read(cache_file)
+    else:
+        # slightly off-center circle
+        circle = geom.add_circle(
+            [0.1, 1.0e-2, 0.0], 0.5 * obstacle_diameter, lcar,
+            make_surface=False
+            )
 
-    geom.add_rectangle(
-        x0, x1, y0, y1,
-        0.0,
-        lcar,
-        holes=[circle]
-        )
+        geom.add_rectangle(
+            x0, x1, y0, y1,
+            0.0,
+            lcar,
+            holes=[circle]
+            )
 
-    points, cells, point_data, cell_data, field_data = \
-        pygmsh.generate_mesh(geom)
+        points, cells, _, _, _ = pygmsh.generate_mesh(geom)
+
+        meshio.write(cache_file, points, cells)
 
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
@@ -56,6 +66,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     mesh_eps = 1.0e-12
 
     # Define mesh and boundaries.
+    # pylint: disable=no-self-use
     class LeftBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return on_boundary and x[0] < x0 + mesh_eps
@@ -170,8 +181,8 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     p0.rename('pressure', 'pressure')
 
     rho = materials.water.density(T=293.0)
-    # stepper = flow.navier_stokes.IPCS(theta=1.0)
     # stepper = flow.navier_stokes.Chorin()
+    # stepper = flow.navier_stokes.IPCS()
     stepper = flow.navier_stokes.Rotational()
 
     W2 = u0.function_space()
@@ -181,6 +192,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         DirichletBC(W2, (0.0, 0.0), lower_boundary),
         DirichletBC(W2, (0.0, 0.0), obstacle_boundary),
         DirichletBC(W2.sub(0), inflow, left_boundary),
+        #
         DirichletBC(W2.sub(0), outflow, right_boundary),
         ]
     # TODO settting the outflow _and_ the pressure at the outlet is actually
@@ -206,7 +218,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         k = 0
         while k < num_steps:
             k += 1
-            print
+            print()
             print('t = %f' % t)
             if show:
                 plot(u0)
@@ -215,10 +227,10 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
                 xdmf_file.write(p0, t)
 
             u1, p1 = stepper.step(
-                    dt,
+                    Constant(dt),
                     {0: u0}, p0,
                     u_bcs, p_bcs,
-                    rho, mu,
+                    Constant(rho), Constant(mu),
                     f={
                         0: Constant((0.0, 0.0)),
                         1: Constant((0.0, 0.0))
@@ -278,4 +290,4 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
 
 
 if __name__ == '__main__':
-    test_karman(lcar=5.0e-3, num_steps=sys.maxint, show=True)
+    test_karman(lcar=5.0e-3, num_steps=100000, show=True)

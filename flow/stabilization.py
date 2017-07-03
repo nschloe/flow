@@ -74,9 +74,9 @@ void eval(
     //    Volker John, Petr Knobloch;
     //    Comput. Methods Appl. Mech. Engrg. 197 (2008) 1997-2014.
     //
-    //    diam(cell, s) = 2*||s|| / sum_{nodes n_i} |s.\grad\psi|
+    //    diam(cell, s) = 2*||s|| / sum_{nodes n_i} |s.\\grad\\psi|
     //
-    // where \psi is the P_1 basis function of n_i.
+    // where \\psi is the P_1 basis function of n_i.
     //
     const double area = cell.volume();
     const unsigned int* vertices = cell.entities(0);
@@ -97,12 +97,12 @@ void eval(
 
         // Note that
         //
-        //     \grad\psi = ortho_edge / edgelength / height
-        //               = ortho_edge / (2*area)
+        //     \\grad\\psi = ortho_edge / edgelength / height
+        //                 = ortho_edge / (2*area)
         //
         // so
         //
-        //   (v.\grad\psi) = (v.ortho_edge) / (2*area).
+        //   (v.\\grad\\psi) = (v.ortho_edge) / (2*area).
         //
         // Move the constant factors out of the summation.
         //

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 #
+from __future__ import print_function
+
+import sys
+
 import flow
 
 from dolfin import (
@@ -10,7 +14,6 @@ from dolfin import (
 import materials
 import meshio
 import pygmsh
-import sys
 
 
 # def create_mesh(lcar):
@@ -21,7 +24,7 @@ import sys
 #     points, cells, point_data, cell_data, field_data = \
 #         pygmsh.generate_mesh(geom)
 #
-#     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
+#     https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
 #     meshio.write('test.xml', points, cells)
 #     return Mesh('test.xml')
 
@@ -43,8 +46,7 @@ def create_mesh(lcar):
         holes=[circle]
         )
 
-    points, cells, point_data, cell_data, field_data = \
-        pygmsh.generate_mesh(geom)
+    points, cells, _, _, _ = pygmsh.generate_mesh(geom)
 
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
@@ -104,7 +106,7 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
         k = 0
         while k < num_steps:
             k += 1
-            print
+            print()
             print('t = %f' % t)
             if show:
                 xdmf_file.write(u0, t)
@@ -114,10 +116,10 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
                 interactive()
 
             u1, p1 = stepper.step(
-                    dt,
+                    Constant(dt),
                     {0: u0}, p0,
                     u_bcs, p_bcs,
-                    rho, mu,
+                    Constant(rho), Constant(mu),
                     f={
                         0: Constant((0.0, g)),
                         1: Constant((0.0, g))

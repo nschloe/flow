@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 #
+from __future__ import print_function
+
+import warnings
+
 from helpers import ccode, compute_numerical_order_of_convergence
 import flow.navier_stokes as navsto
 
 from dolfin import (
     UnitSquareMesh, triangle, RectangleMesh, pi, Point, Expression, assemble,
     dx, errornorm, plot, interactive, interpolate, project, DirichletBC,
-    Function, FunctionSpace, VectorFunctionSpace
+    Function, FunctionSpace, VectorFunctionSpace, Constant
     )
 import matplotlib.pyplot as plt
 import numpy
 import pytest
 import sympy
-import warnings
 
 
 MAX_DEGREE = 5
@@ -271,8 +274,8 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
         'p': numpy.empty((len(mesh_sizes), len(Dt)))
         }
     for k, mesh_size in enumerate(mesh_sizes):
-        print
-        print
+        print()
+        print()
         print('Computing for mesh size %r...' % mesh_size)
         mesh = mesh_generator(mesh_size)
         mesh_area = assemble(1.0 * dx(mesh))
@@ -307,10 +310,10 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
             fenics_rhs0.t = 0.0
             fenics_rhs1.t = dt
             u1, p1 = method.step(
-                    dt,
+                    Constant(dt),
                     {-1: u_1, 0: u0}, p0,
                     u_bcs=u_bcs, p_bcs=p_bcs,
-                    rho=rho, mu=mu,
+                    rho=Constant(rho), mu=Constant(mu),
                     f={0: fenics_rhs0, 1: fenics_rhs1},
                     verbose=False,
                     tol=1.0e-10
@@ -380,12 +383,11 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
     problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_chorin(problem, stabilization, tol=1.0e-10):
+def test_chorin(problem):
     Dt = [1.0e-3, 0.5e-3]
     mesh_sizes = [16, 32]
     assert_time_order(
-            problem, navsto.Chorin(stabilization=stabilization), tol=tol,
+            problem, navsto.Chorin(),
             Dt=Dt,
             mesh_sizes=mesh_sizes
             )
@@ -398,15 +400,12 @@ def test_chorin(problem, stabilization, tol=1.0e-10):
     problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_ipcs(problem, stabilization, tol=1.0e-10):
+def test_ipcs(problem):
     assert_time_order(
         problem,
-        navsto.IPCS(
-            stabilization=stabilization,
-            time_step_method='backward euler'
-            ),
-        tol
+        navsto.IPCS(time_step_method='backward euler'),
+        mesh_sizes=[8, 16, 32],
+        Dt=[0.5**k for k in range(2)]
         )
     return
 
@@ -418,15 +417,10 @@ def test_ipcs(problem, stabilization, tol=1.0e-10):
     # problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_rotational(problem, stabilization, tol=1.0e-10):
+def test_rotational(problem):
     assert_time_order(
         problem,
-        navsto.Rotational(
-            stabilization=stabilization,
-            time_step_method='backward euler'
-            ),
-        tol,
+        navsto.Rotational(time_step_method='backward euler'),
         mesh_sizes=[32, 64],
         Dt=[1.0e-2, 0.5e-2],
         )
@@ -435,9 +429,8 @@ def test_rotational(problem, stabilization, tol=1.0e-10):
 
 def assert_time_order(
         problem, method,
-        tol=1.0e-10,
-        mesh_sizes=[8, 16, 32],
-        Dt=[0.5**k for k in range(2)]
+        mesh_sizes,
+        Dt
         ):
     errors = compute_time_errors(problem, method, mesh_sizes, Dt)
     orders = {
@@ -465,21 +458,21 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
 
     # Print the data to the screen
     for i, mesh_size in enumerate(mesh_sizes):
-        print
+        print()
         print('Mesh size %d:' % mesh_size)
-        print('dt = %e' % Dt[0]),
+        print('dt = %e' % Dt[0])
         for label, e in errors.items():
-            print('   err_%s = %e' % (label, e[i][0])),
-        print
+            print('   err_%s = %e' % (label, e[i][0]))
+        print()
         for j in range(len(Dt) - 1):
-            print('                 '),
+            print('                 ')
             for label, o in orders.items():
-                print('   ord_%s = %e' % (label, o[i][j])),
-            print
-            print('dt = %e' % Dt[j+1]),
+                print('   ord_%s = %e' % (label, o[i][j]))
+            print()
+            print('dt = %e' % Dt[j+1])
             for label, e in errors.items():
-                print('   err_%s = %e' % (label, e[i][j+1])),
-            print
+                print('   err_%s = %e' % (label, e[i][j+1]))
+            print()
 
     # Create a figure
     for label, err in errors.items():
@@ -506,9 +499,9 @@ def show_timeorder_info(Dt, mesh_sizes, errors):
 
 
 if __name__ == '__main__':
-    mesh_sizes = [8, 16, 32]
-    Dt = [0.5**k for k in range(20)]
-    errors = compute_time_errors(
+    mesh_sizes_ = [8, 16, 32]
+    Dt_ = [0.5**k_ for k_ in range(20)]
+    errors_ = compute_time_errors(
         # problem_flat,
         # problem_whirl,
         problem_guermond1,
@@ -520,6 +513,6 @@ if __name__ == '__main__':
         # navsto.IPCS(time_step_method='backward euler'),
         # navsto.IPCS(time_step_method='bdf2'),
         navsto.Rotational(),
-        mesh_sizes, Dt
+        mesh_sizes_, Dt_
         )
-    show_timeorder_info(Dt, mesh_sizes, errors)
+    show_timeorder_info(Dt_, mesh_sizes_, errors_)

@@ -5,7 +5,7 @@ Numerical solution schemes for the Stokes equation in cylindrical coordinates.
 '''
 
 from dolfin import (
-    TestFunctions, TrialFunctions, inner, grad, dx, dot, div, assemble_system,
+    TestFunctions, TrialFunctions, inner, grad, dx, div, assemble_system,
     KrylovSolver, PETScKrylovSolver, Function, has_petsc, PETScOptions
     )
 

@@ -4,6 +4,10 @@
 '''
 Coupled solve of the Navier--Stokes and the heat equation.
 '''
+from __future__ import print_function
+
+import os
+
 import flow
 
 from dolfin import (
@@ -19,27 +23,15 @@ import pygmsh
 
 
 def create_mesh(lcar):
-    geom = pygmsh.Geometry()
 
     x0 = 0.0
     x1 = 0.1
     y0 = 0.0
     y1 = 0.2
 
-    circle = geom.add_circle([0.05, 0.05, 0.0], 0.02, lcar, make_surface=False)
-
-    geom.add_rectangle(
-        x0, x1, y0, y1,
-        0.0,
-        lcar,
-        holes=[circle]
-        )
-
-    points, cells, point_data, cell_data, field_data = \
-        pygmsh.generate_mesh(geom)
-
     mesh_eps = 1.0e-12
 
+    # pylint: disable=no-self-use
     class HotBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return (
@@ -59,6 +51,28 @@ def create_mesh(lcar):
                     x[1] > y1 - mesh_eps
                     ))
     cool_boundary = CoolBoundary()
+
+    cache_file = 'boussinesq.msh'
+    if os.path.isfile(cache_file):
+        print('Using mesh from cache \'{}\'.'.format(cache_file))
+        points, cells, _, _, _ = meshio.read(cache_file)
+    else:
+        geom = pygmsh.Geometry()
+
+        circle = geom.add_circle(
+            [0.05, 0.05, 0.0], 0.02, lcar, make_surface=False
+            )
+
+        geom.add_rectangle(
+            x0, x1, y0, y1,
+            0.0,
+            lcar,
+            holes=[circle]
+            )
+
+        points, cells, _, _, _ = pygmsh.generate_mesh(geom)
+
+        meshio.write(cache_file, points, cells)
 
     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
     meshio.write('test.xml', points, cells)
@@ -121,6 +135,7 @@ class Heat(object):
             )
         return alpha * f1 + beta * f2
 
+    # pylint: disable=unused-argument
     def eval_alpha_M_beta_F(self, alpha, beta, u, t):
         # Evaluate  alpha * M * u + beta * F(u, t).
         v = TestFunction(self.V)
@@ -283,18 +298,18 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 # Do one Navier-Stokes time step.
                 begin('Computing flux and pressure...')
                 # stepper = flow.navier_stokes.Chorin()
-                stepper = flow.navier_stokes.IPCS()
-                # stepper = flow.navier_stokes.Rotational()
+                # stepper = flow.navier_stokes.IPCS()
+                stepper = flow.navier_stokes.Rotational()
                 W = u0.function_space()
                 u_bcs = [DirichletBC(W, (0.0, 0.0), 'on_boundary')]
                 p_bcs = []
                 try:
                     u1, p1 = stepper.step(
-                            dt,
+                            Constant(dt),
                             {0: u0}, p0,
                             u_bcs, p_bcs,
                             # TODO use rho(theta)
-                            rho(room_temp), mu,
+                            rho(room_temp), Constant(mu),
                             f={
                                 0: rho(theta_prev) * g,
                                 1: rho(theta_prev) * g
@@ -302,8 +317,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                             verbose=False,
                             tol=1.0e-10
                             )
-                except RuntimeError as e:
-                    info(e.message)
+                except RuntimeError:
                     info('Navier--Stokes solver failed to converge. '
                          'Decrease time step from %e to %e and try again.' %
                          (dt, 0.5*dt)
