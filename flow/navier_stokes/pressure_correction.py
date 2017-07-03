@@ -162,6 +162,37 @@ def _pressure_poisson(
 
         \\nabla p = u.
     '''
+    #
+    # The following is based on the update formula
+    #
+    #     rho/dt (u_{n+1}-u*) + \nabla phi = 0
+    #
+    # with
+    #
+    #     phi = (p_{n+1} - p*) + chi*mu*div(u*)
+    #
+    # and div(u_{n+1})=0. One derives
+    #
+    #   - \nabla^2 phi = rho/dt div(u_{n+1} - u*),
+    #   - n.\nabla phi = rho/dt  n.(u_{n+1} - u*),
+    #
+    # In its weak form, this is
+    #
+    #     \int \grad(phi).\grad(q)
+    #   = - rho/dt \int div(u*) q - rho/dt \int_Gamma n.(u_{n+1}-u*) q.
+    #
+    # If Dirichlet boundary conditions are applied to both u* and u_{n+1} (the
+    # latter in the final step), the boundary integral vanishes.
+    #
+    # Assume that on the boundary
+    #   L2 -= inner(n, rho/k (u_bcs - ui)) * q * ds
+    # is zero. This requires the boundary conditions to be set for ui as well
+    # as u_final.
+    # This creates some problems if the boundary conditions are supposed to
+    # remain 'free' for the velocity, i.e., no Dirichlet conditions in normal
+    # direction. In that case, one needs to specify Dirichlet pressure
+    # conditions.
+    #
     if p0:
         P = p0.function_space()
     else:
@@ -294,6 +325,153 @@ def _pressure_poisson(
     return p1
 
 
+def _compute_tentative_velocity(
+        u, p0, f, u_bcs, time_step_method, rho, mu, k, v,
+        tol=1.0e-10
+        ):
+    #
+    #     F(u) = 0,
+    #     F(u) := rho (U0 + (u.\nabla)u) - mu \div(\nabla u) - f = 0.
+    #
+    # TODO higher-order scheme for time integration
+    #
+    # For higher-order schemes, see
+    #
+    # A comparison of time-discretization/linearization approaches
+    # for the incompressible Navier-Stokes equations;
+    # Volker John, Gunar Matthies, Joachim Rang;
+    # Comput. Methods Appl. Mech. Engrg. 195 (2006) 5995-6010;
+    # <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JMR06.CMAME.pdf>.
+    #
+
+    ui = Function(u[0].function_space())
+
+    # F1 is scaled with `k / rho`.
+    if time_step_method == 'forward euler':
+        alpha = 1.0
+        F1 = (
+            inner(ui - u[0], v) * dx
+            - k/rho * _rhs_weak(u[0], v, f[0], rho, mu)
+            )
+    elif time_step_method == 'backward euler':
+        alpha = 1.0
+        F1 = (
+            inner(ui - u[0], v) * dx
+            - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
+            )
+    elif time_step_method == 'crank-nicolson':
+        alpha = 1.0
+        F1 = (
+            inner(ui - u[0], v) * dx
+            - k/rho * 0.5 * (
+                _rhs_weak(u[0], v, f[0], rho, mu) +
+                _rhs_weak(ui,   v, f[1], rho, mu)
+                )
+            )
+    else:
+        assert time_step_method == 'bdf2'
+        alpha = 1.5
+        F1 = (
+            inner(1.5 * ui - 2 * u[0] + 0.5 * u[-1], v) * dx
+            - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
+            )
+
+    if p0:
+        F1 += k/rho * inner(grad(p0), v) * dx
+
+    # Get linearization and solve nonlinear system.
+    # If the scheme is fully explicit (theta=0.0), then the system is
+    # actually linear and only one Newton iteration is performed.
+    J = derivative(F1, ui)
+
+    # What is a good initial guess for the Newton solve?
+    # Three choices come to mind:
+    #
+    #    (1) the previous solution u0,
+    #    (2) the intermediate solution from the previous step ui0,
+    #    (3) the solution of the semilinear system
+    #        (u.\nabla(u) -> u0.\nabla(u)).
+    #
+    # Numerical experiments with the Karman vortex street show that the
+    # order of accuracy is (1), (3), (2). Typical norms would look like
+    #
+    #     ||u - u0 || = 1.726432e-02
+    #     ||u - ui0|| = 2.720805e+00
+    #     ||u - u_e|| = 5.921522e-02
+    #
+    # Hence, use u0 as initial guess.
+    ui.assign(u[0])
+
+    # problem = NonlinearVariationalProblem(F1, ui, u_bcs, J)
+    # solver = NonlinearVariationalSolver(problem)
+    solve(
+        F1 == 0, ui,
+        bcs=u_bcs,
+        J=J,
+        solver_parameters={
+            # 'nonlinear_solver': 'snes',
+            'nonlinear_solver': 'newton',
+            'newton_solver': {
+                'maximum_iterations': 10,
+                'report': True,
+                'absolute_tolerance': tol,
+                'relative_tolerance': 0.0,
+                'error_on_nonconvergence': True
+                # 'linear_solver': 'iterative',
+                # # # The nonlinear term makes the problem generally
+                # # # nonsymmetric.
+                # # 'symmetric': False,
+                # #  If the nonsymmetry is too strong, e.g., if u_1 is
+                # #  large, then AMG preconditioning might not work
+                # #  very well.
+                # 'preconditioner': 'ilu',
+                # # 'preconditioner': 'hypre_amg',
+                # 'krylov_solver': {
+                #     'relative_tolerance': tol,
+                #     'absolute_tolerance': 0.0,
+                #     'maximum_iterations': 1000,
+                #     'monitor_convergence': verbose
+                #     }
+                }
+           }
+        )
+    return ui, alpha
+
+
+def _compute_velocity_correction(
+        ui, u, u_bcs, p1, p0, v, mu, rho, k, rotational_form, tol, verbose
+        ):
+    # Velocity correction.
+    #   U = U0 - dt/rho \nabla p.
+    u2 = TrialFunction(u[0].function_space())
+    a3 = inner(u2, v) * dx
+
+    phi = p1
+    if p0:
+        phi -= p0
+    if rotational_form:
+        phi += mu * div(ui)
+
+    L3 = inner(ui,  v) * dx \
+        - k/rho * inner(grad(phi), v) * dx
+    u1 = Function(u[0].function_space())
+    solve(a3 == L3, u1,
+          bcs=u_bcs,
+          solver_parameters={
+              'linear_solver': 'iterative',
+              'symmetric': True,
+              'preconditioner': 'hypre_amg',
+              'krylov_solver': {
+                  'relative_tolerance': tol,
+                  'absolute_tolerance': 0.0,
+                  'maximum_iterations': 100,
+                  'monitor_convergence': verbose,
+                  'error_on_nonconvergence': True
+                  }
+              })
+    return u1
+
+
 def _step(
         dt,
         u, p0,
@@ -333,160 +511,13 @@ def _step(
     # Define coefficients
     k = Constant(dt)
 
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # Compute tentative velocity step:
-    #
-    #     F(u) = 0,
-    #     F(u) := rho (U0 + (u.\nabla)u) - mu \div(\nabla u) - f = 0.
-    #
     with Message('Computing tentative velocity'):
-        # TODO higher-order scheme for time integration
-        #
-        # For higher-order schemes, see
-        #
-        #     A comparison of time-discretization/linearization approaches
-        #     for the incompressible Navier-Stokes equations;
-        #     Volker John, Gunar Matthies, Joachim Rang;
-        #     Comput. Methods Appl. Mech. Engrg. 195 (2006) 5995-6010;
-        #     <http://www.wias-berlin.de/people/john/ELECTRONIC_PAPERS/JMR06.CMAME.pdf>.
-        #
-
-        ui = Function(u[0].function_space())
-
-        # F1 is scaled with `k / rho`.
-        if time_step_method == 'forward euler':
-            alpha = 1.0
-            F1 = (
-                inner(ui - u[0], v) * dx
-                - k/rho * _rhs_weak(u[0], v, f[0], rho, mu)
-                )
-        elif time_step_method == 'backward euler':
-            alpha = 1.0
-            F1 = (
-                inner(ui - u[0], v) * dx
-                - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
-                )
-        elif time_step_method == 'crank-nicolson':
-            alpha = 1.0
-            F1 = (
-                inner(ui - u[0], v) * dx
-                - k/rho * 0.5 * (
-                    _rhs_weak(u[0], v, f[0], rho, mu) +
-                    _rhs_weak(ui,   v, f[1], rho, mu)
-                    )
-                )
-        else:
-            assert time_step_method == 'bdf2'
-            alpha = 1.5
-            F1 = (
-                inner(1.5 * ui - 2 * u[0] + 0.5 * u[-1], v) * dx
-                - k/rho * _rhs_weak(ui, v, f[1], rho, mu)
+        ui, alpha = _compute_tentative_velocity(
+                u, p0, f, u_bcs, time_step_method, rho, mu, k, v,
+                tol=1.0e-10
                 )
 
-        if p0:
-            F1 += k/rho * inner(grad(p0), v) * dx
-
-        # if stabilization:
-        #     tau = supg(u[0], mu/rho)
-        #     R = rho*(ui - u[0])/k
-        #     if abs(theta) > DOLFIN_EPS:
-        #         R -= theta * _rhs_strong(ui, f[1], rho, mu)
-        #     if abs(1.0-theta) > DOLFIN_EPS:
-        #         R -= (1.0-theta) * _rhs_strong(u[0], f[0], rho, mu)
-        #     if p0:
-        #         R += grad(p0)
-        #     # TODO use u0 or ui here?
-        #     F1 += k/rho * tau * dot(R, grad(v)*u[0]) * dx
-
-        # Get linearization and solve nonlinear system.
-        # If the scheme is fully explicit (theta=0.0), then the system is
-        # actually linear and only one Newton iteration is performed.
-        J = derivative(F1, ui)
-
-        # What is a good initial guess for the Newton solve?
-        # Three choices come to mind:
-        #
-        #    (1) the previous solution u0,
-        #    (2) the intermediate solution from the previous step ui0,
-        #    (3) the solution of the semilinear system
-        #        (u.\nabla(u) -> u0.\nabla(u)).
-        #
-        # Numerical experiments with the Karman vortex street show that the
-        # order of accuracy is (1), (3), (2). Typical norms would look like
-        #
-        #     ||u - u0 || = 1.726432e-02
-        #     ||u - ui0|| = 2.720805e+00
-        #     ||u - u_e|| = 5.921522e-02
-        #
-        # Hence, use u0 as initial guess.
-        ui.assign(u[0])
-
-        # problem = NonlinearVariationalProblem(F1, ui, u_bcs, J)
-        # solver = NonlinearVariationalSolver(problem)
-        solve(
-            F1 == 0, ui,
-            bcs=u_bcs,
-            J=J,
-            solver_parameters={
-                # 'nonlinear_solver': 'snes',
-                'nonlinear_solver': 'newton',
-                'newton_solver': {
-                    'maximum_iterations': 10,
-                    'report': True,
-                    'absolute_tolerance': tol,
-                    'relative_tolerance': 0.0,
-                    'error_on_nonconvergence': True
-                    # 'linear_solver': 'iterative',
-                    # # # The nonlinear term makes the problem generally
-                    # # # nonsymmetric.
-                    # # 'symmetric': False,
-                    # #  If the nonsymmetry is too strong, e.g., if u_1 is
-                    # #  large, then AMG preconditioning might not work
-                    # #  very well.
-                    # 'preconditioner': 'ilu',
-                    # # 'preconditioner': 'hypre_amg',
-                    # 'krylov_solver': {
-                    #     'relative_tolerance': tol,
-                    #     'absolute_tolerance': 0.0,
-                    #     'maximum_iterations': 1000,
-                    #     'monitor_convergence': verbose
-                    #     }
-                    }
-               }
-            )
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     with Message('Computing pressure correction'):
-        #
-        # The following is based on the update formula
-        #
-        #     rho/dt (u_{n+1}-u*) + \nabla phi = 0
-        #
-        # with
-        #
-        #     phi = (p_{n+1} - p*) + chi*mu*div(u*)
-        #
-        # and div(u_{n+1})=0. One derives
-        #
-        #   - \nabla^2 phi = rho/dt div(u_{n+1} - u*),
-        #   - n.\nabla phi = rho/dt  n.(u_{n+1} - u*),
-        #
-        # In its weak form, this is
-        #
-        #     \int \grad(phi).\grad(q)
-        #   = - rho/dt \int div(u*) q - rho/dt \int_Gamma n.(u_{n+1}-u*) q.
-        #
-        # If Dirichlet boundary conditions are applied to both u* and u_{n+1}
-        # (the latter in the final step), the boundary integral vanishes.
-        #
-        # Assume that on the boundary
-        #   L2 -= inner(n, rho/k (u_bcs - ui)) * q * ds
-        # is zero. This requires the boundary conditions to be set for ui as
-        # well as u_final.
-        # This creates some problems if the boundary conditions are supposed to
-        # remain 'free' for the velocity, i.e., no Dirichlet conditions in
-        # normal direction. In that case, one needs to specify Dirichlet
-        # pressure conditions.
-        #
         p1 = _pressure_poisson(
                 p0,
                 mu, ui,
@@ -497,36 +528,12 @@ def _step(
                 tol=tol,
                 verbose=verbose
                 )
-    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # Velocity correction.
-    #   U = U0 - dt/rho \nabla p.
+
     with Message('Computing velocity correction'):
-        u2 = TrialFunction(u[0].function_space())
-        a3 = inner(u2, v) * dx
+        u1 = _compute_velocity_correction(
+            ui, u, u_bcs, p1, p0, v, mu, rho, k, rotational_form, tol, verbose
+            )
 
-        phi = p1
-        if p0:
-            phi -= p0
-        if rotational_form:
-            phi += mu * div(ui)
-
-        L3 = inner(ui,  v) * dx \
-            - k/rho * inner(grad(phi), v) * dx
-        u1 = Function(u[0].function_space())
-        solve(a3 == L3, u1,
-              bcs=u_bcs,
-              solver_parameters={
-                  'linear_solver': 'iterative',
-                  'symmetric': True,
-                  'preconditioner': 'hypre_amg',
-                  'krylov_solver': {
-                      'relative_tolerance': tol,
-                      'absolute_tolerance': 0.0,
-                      'maximum_iterations': 100,
-                      'monitor_convergence': verbose,
-                      'error_on_nonconvergence': True
-                      }
-                  })
     return u1, p1
 
 
