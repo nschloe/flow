@@ -380,12 +380,11 @@ def compute_time_errors(problem, method, mesh_sizes, Dt):
     problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_chorin(problem, stabilization, tol=1.0e-10):
+def test_chorin(problem, tol=1.0e-10):
     Dt = [1.0e-3, 0.5e-3]
     mesh_sizes = [16, 32]
     assert_time_order(
-            problem, navsto.Chorin(stabilization=stabilization), tol=tol,
+            problem, navsto.Chorin(), tol=tol,
             Dt=Dt,
             mesh_sizes=mesh_sizes
             )
@@ -398,12 +397,10 @@ def test_chorin(problem, stabilization, tol=1.0e-10):
     problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_ipcs(problem, stabilization, tol=1.0e-10):
+def test_ipcs(problem, tol=1.0e-10):
     assert_time_order(
         problem,
         navsto.IPCS(
-            stabilization=stabilization,
             time_step_method='backward euler'
             ),
         tol
@@ -418,12 +415,10 @@ def test_ipcs(problem, stabilization, tol=1.0e-10):
     # problem_guermond2,
     # problem_taylor,
     ])
-@pytest.mark.parametrize('stabilization', [True, False])
-def test_rotational(problem, stabilization, tol=1.0e-10):
+def test_rotational(problem, tol=1.0e-10):
     assert_time_order(
         problem,
         navsto.Rotational(
-            stabilization=stabilization,
             time_step_method='backward euler'
             ),
         tol,

@@ -21,7 +21,7 @@ import sys
 #     points, cells, point_data, cell_data, field_data = \
 #         pygmsh.generate_mesh(geom)
 #
-#     # https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
+#     https://fenicsproject.org/qa/12891/initialize-mesh-from-vertices-connectivities-at-once
 #     meshio.write('test.xml', points, cells)
 #     return Mesh('test.xml')
 
@@ -114,10 +114,10 @@ def test_sealed_box(num_steps=2, lcar=0.1, show=False):
                 interactive()
 
             u1, p1 = stepper.step(
-                    dt,
+                    Constant(dt),
                     {0: u0}, p0,
                     u_bcs, p_bcs,
-                    rho, mu,
+                    Constant(rho), Constant(mu),
                     f={
                         0: Constant((0.0, g)),
                         1: Constant((0.0, g))
