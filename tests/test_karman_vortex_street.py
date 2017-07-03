@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 #
+from __future__ import print_function
+
 import os
 
 from dolfin import (
@@ -42,8 +44,7 @@ def create_mesh(lcar):
             holes=[circle]
             )
 
-        points, cells, point_data, cell_data, field_data = \
-            pygmsh.generate_mesh(geom)
+        points, cells, _, _, _ = pygmsh.generate_mesh(geom)
 
         meshio.write(cache_file, points, cells)
 
@@ -65,6 +66,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     mesh_eps = 1.0e-12
 
     # Define mesh and boundaries.
+    # pylint: disable=no-self-use
     class LeftBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return on_boundary and x[0] < x0 + mesh_eps
@@ -216,7 +218,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
         k = 0
         while k < num_steps:
             k += 1
-            print
+            print()
             print('t = %f' % t)
             if show:
                 plot(u0)

@@ -4,6 +4,10 @@
 '''
 Coupled solve of the Navier--Stokes and the heat equation.
 '''
+from __future__ import print_function
+
+import os
+
 import flow
 
 from dolfin import (
@@ -16,7 +20,6 @@ import materials
 import meshio
 import parabolic
 import pygmsh
-import os
 
 
 def create_mesh(lcar):
@@ -28,6 +31,7 @@ def create_mesh(lcar):
 
     mesh_eps = 1.0e-12
 
+    # pylint: disable=no-self-use
     class HotBoundary(SubDomain):
         def inside(self, x, on_boundary):
             return (
@@ -66,11 +70,7 @@ def create_mesh(lcar):
             holes=[circle]
             )
 
-        points, cells, point_data, cell_data, field_data = \
-            pygmsh.generate_mesh(geom)
-
-        points, cells, point_data, cell_data, field_data = \
-            pygmsh.generate_mesh(geom)
+        points, cells, _, _, _ = pygmsh.generate_mesh(geom)
 
         meshio.write(cache_file, points, cells)
 
@@ -135,6 +135,7 @@ class Heat(object):
             )
         return alpha * f1 + beta * f2
 
+    # pylint: disable=unused-argument
     def eval_alpha_M_beta_F(self, alpha, beta, u, t):
         # Evaluate  alpha * M * u + beta * F(u, t).
         v = TestFunction(self.V)
@@ -316,7 +317,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                             verbose=False,
                             tol=1.0e-10
                             )
-                except RuntimeError as e:
+                except RuntimeError:
                     info('Navier--Stokes solver failed to converge. '
                          'Decrease time step from %e to %e and try again.' %
                          (dt, 0.5*dt)

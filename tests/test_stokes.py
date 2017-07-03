@@ -61,6 +61,7 @@ class Flat(object):
             }
         return
 
+    # pylint: disable=no-self-use
     def mesh_generator(self, n):
         return UnitSquareMesh(n, n, 'left/right')
 
@@ -93,6 +94,7 @@ class Guermond1(object):
             }
         return
 
+    # pylint: disable=no-self-use
     def mesh_generator(self, n):
         return UnitSquareMesh(n, n, 'left/right')
 
@@ -175,12 +177,12 @@ def show_errors(hmax, u_errors, p_errors):
 
 
 if __name__ == '__main__':
-    mesh_sizes = [8, 16, 32]
-    hmax, u_errors, p_errors = numpy.array([compute_error(
+    mesh_sizes_ = [8, 16, 32]
+    hmax_, u_errors_, p_errors_ = numpy.array([compute_error(
         # Flat(),
         Guermond1(),
-        mesh_size
+        mesh_size_
         )
-        for mesh_size in mesh_sizes
+        for mesh_size_ in mesh_sizes_
         ]).T
-    show_errors(hmax, u_errors, p_errors)
+    show_errors(hmax_, u_errors_, p_errors_)

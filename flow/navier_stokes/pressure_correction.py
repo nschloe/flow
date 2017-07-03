@@ -18,22 +18,13 @@ or
     <http://mumerik.iwr.uni-heidelberg.de/Oberwolfach-Seminar/CFD-Course.pdf>.
 '''
 
-from ..message import Message
-
 from dolfin import (
     dot, inner, grad, dx, ds, div, Function, TestFunction, solve, derivative,
     TrialFunction, assemble, PETScPreconditioner, FacetNormal,
     PETScKrylovSolver, as_backend_type, PETScOptions, Identity
     )
 
-
-# def _rhs_strong(u, f, rho, mu):
-#     '''Right-hand side of the Navier--Stokes momentum equation in strong
-#     form.
-#     '''
-#     return f \
-#         - mu * div(grad(u)) \
-#         - rho * (grad(u)*u + 0.5*div(u)*u)
+from ..message import Message
 
 
 def _rhs_weak(u, v, f, rho, mu, p0):
@@ -194,7 +185,7 @@ def _compute_tentative_velocity(
             inner(ui - u[0], v) * dx
             - dt/rho * 0.5 * (
                 _rhs_weak(u[0], v, f[0], rho, mu, p0) +
-                _rhs_weak(ui,   v, f[1], rho, mu, p0)
+                _rhs_weak(ui, v, f[1], rho, mu, p0)
                 )
             )
     # else:
@@ -266,7 +257,7 @@ def _compute_tentative_velocity(
 
 def _compute_pressure(
         p0,
-        alpha, rho, dt, mu, ui,
+        alpha, rho, dt, mu,
         div_ui,
         p_bcs=None,
         p_function_space=None,
@@ -454,7 +445,7 @@ def _compute_velocity_correction(
     if rotational_form:
         phi += mu * div(ui)
 
-    L3 = inner(ui,  v) * dx \
+    L3 = inner(ui, v) * dx \
         - dt/rho * inner(grad(phi), v) * dx
     u1 = Function(u[0].function_space())
     solve(a3 == L3, u1,
@@ -511,7 +502,7 @@ def _step(
     with Message('Computing pressure'):
         p1 = _compute_pressure(
                 p0,
-                alpha, rho, dt, mu, ui,
+                alpha, rho, dt, mu,
                 div_ui=div(ui),
                 p_bcs=p_bcs,
                 rotational_form=rotational_form,
@@ -538,6 +529,7 @@ class Chorin(object):
 
     # p0 and f0 aren't necessary here, we just keep it around to interface
     # equality with IPCS.
+    # pylint: disable=no-self-use
     def step(
             self,
             dt,
