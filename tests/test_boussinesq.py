@@ -263,9 +263,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             theta_prev = Function(theta0.function_space())
             theta_prev.assign(theta0)
             is_banach_converged = False
-            banach_tol = 1.0e-5
-            max_banach_steps = 50
-            target_banach_steps = 25
+            banach_tol = 1.0e-1
+            max_banach_steps = 10
+            target_banach_steps = 5
             banach_step = 0
             while not is_banach_converged:
                 banach_step += 1
