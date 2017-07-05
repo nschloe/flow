@@ -83,7 +83,7 @@ def test_boussinesq():
     u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=False)
     ref = 3.959158183043053e-06
     assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
-    ref = 40.35638391160463
+    ref = 40.225818326711604
     assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
     return
 
@@ -92,7 +92,7 @@ def test_boussinesq_with_supg():
     u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=True)
     ref = 3.9591568082077104e-06
     assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
-    ref = 40.35638391160463
+    ref = 40.225818361936234
     assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
     return
 
