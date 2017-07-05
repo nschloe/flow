@@ -81,7 +81,7 @@ def create_mesh(lcar):
 
 def test_boussinesq():
     u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=False)
-    ref = 7.717866694234539e-06
+    ref = 3.959158183043053e-06
     assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
     ref = 40.35638391160463
     assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
@@ -90,7 +90,7 @@ def test_boussinesq():
 
 def test_boussinesq_with_supg():
     u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=True)
-    ref = 7.718099717545708e-06
+    ref = 3.9591568082077104e-06
     assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
     ref = 40.35638391160463
     assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
