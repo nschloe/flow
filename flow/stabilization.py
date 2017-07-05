@@ -68,8 +68,8 @@ void eval(
 
   Cell cell(*mesh, c.index);
 
-  //// The alternative for the lazy:
-  //const double h = cell.diameter();
+  // // The alternative for the lazy:
+  // const double h = cell.circumradius();
 
   // Compute the directed diameter of the cell, cf. :cite:`sold2`.
   //
@@ -111,7 +111,7 @@ void eval(
   const double h = 4 * conv_norm * area / sum;
 
   // Just a little sanity check here.
-  assert(h <= cell.diameter());
+  assert(h <= cell.circumradius());
 
   const double Pe = 0.5*conv_norm * h/(p*epsilon);
   assert(Pe > 0.0);
@@ -125,6 +125,8 @@ void eval(
       1.0/3.0 - Pe*Pe / 45.0 + 2.0/945.0 * Pe*Pe*Pe*Pe;
   // const double xi =  (Pe > 1.0 ? 1.0 - 1.0/Pe : 0.0) / Pe;
 
+  // Note that for small Pe, xi is approximately 1/3, i.e. approximately
+  // independent of the convection.
   tau[0] = h*h / 4 / epsilon / p * xi;
 
   if (tau[0] > 1.0e3)
@@ -142,7 +144,7 @@ void eval(
 };
 '''
     # TODO set degree
-    tau = Expression(cppcode, degree=5)
+    tau = Expression(cppcode, degree=1)
     tau.convection = convection
     tau.mesh = mesh
     tau.epsilon = diffusion
