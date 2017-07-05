@@ -6,7 +6,7 @@ Numerical solution schemes for the Stokes equation in cylindrical coordinates.
 
 from dolfin import (
     TestFunctions, TrialFunctions, inner, grad, dx, div, assemble_system,
-    KrylovSolver, PETScKrylovSolver, Function, has_petsc, PETScOptions
+    KrylovSolver, Function
     )
 
 
@@ -45,92 +45,91 @@ def solve(
     L = inner(f, v)*dx
     A, b = assemble_system(a, L, bcs)
 
-    if False and has_petsc():
-        # For an assortment of preconditioners, see
-        #
-        #     Performance and analysis of saddle point preconditioners
-        #     for the discrete steady-state Navier-Stokes equations;
-        #     H.C. Elman, D.J. Silvester, A.J. Wathen;
-        #     Numer. Math. (2002) 90: 665-688;
-        #     <http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.145.3554>.
-        #
-        # Set up field split.
-        # <https://fenicsproject.org/qa/12856/fieldsplit-petscpreconditioner_set_fieldsplit-arguments>
-        PETScOptions.set('ksp_view')
-        PETScOptions.set('ksp_monitor_true_residual')
-        PETScOptions.set('pc_type', 'fieldsplit')
-        PETScOptions.set('pc_fieldsplit_type', 'additive')
-        PETScOptions.set('pc_fieldsplit_detect_saddle_point')
-        PETScOptions.set('fieldsplit_0_ksp_type', 'preonly')
-        PETScOptions.set('fieldsplit_0_pc_type', 'lu')
-        PETScOptions.set('fieldsplit_1_ksp_type', 'preonly')
-        PETScOptions.set('fieldsplit_1_pc_type', 'jacobi')
+    # Use the preconditioner as recommended in
+    # <http://fenicsproject.org/documentation/dolfin/dev/python/demo/pde/stokes-iterative/python/documentation.html>,
+    #
+    #     prec = inner(grad(u), grad(v))*dx - p*q*dx
+    #
+    # although it doesn't seem to be too efficient.
+    # The sign on the last term doesn't matter.
+    prec = mu * inner(grad(u), grad(v))*dx \
+        - p*q*dx
+    M, _ = assemble_system(prec, L, bcs)
+    # solver = KrylovSolver('tfqmr', 'hypre_amg')
+    solver = KrylovSolver('gmres', 'hypre_amg')
+    solver.set_operators(A, M)
 
-        solver = PETScKrylovSolver('gmres')
-        solver.set_operator(A)
-        solver.set_from_options()
+    # For an assortment of preconditioners, see
+    #
+    #     Performance and analysis of saddle point preconditioners
+    #     for the discrete steady-state Navier-Stokes equations;
+    #     H.C. Elman, D.J. Silvester, A.J. Wathen;
+    #     Numer. Math. (2002) 90: 665-688;
+    #     <http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.145.3554>.
+    #
+    # Set up field split.
+    # <https://fenicsproject.org/qa/12856/fieldsplit-petscpreconditioner_set_fieldsplit-arguments>
+    # PETScOptions.set('ksp_view')
+    # PETScOptions.set('ksp_monitor_true_residual')
+    # PETScOptions.set('pc_type', 'fieldsplit')
+    # PETScOptions.set('pc_fieldsplit_type', 'additive')
+    # PETScOptions.set('pc_fieldsplit_detect_saddle_point')
+    # PETScOptions.set('fieldsplit_0_ksp_type', 'preonly')
+    # PETScOptions.set('fieldsplit_0_pc_type', 'lu')
+    # PETScOptions.set('fieldsplit_1_ksp_type', 'preonly')
+    # PETScOptions.set('fieldsplit_1_pc_type', 'jacobi')
 
-        # <http://scicomp.stackexchange.com/questions/7288/which-preconditioners-and-solver-in-petsc-for-indefinite-symmetric-systems-sho>
-        # PETScOptions.set('pc_type', 'fieldsplit')
-        # #PETScOptions.set('pc_fieldsplit_type', 'schur')
-        # #PETScOptions.set('pc_fieldsplit_schur_fact_type', 'upper')
-        # PETScOptions.set('pc_fieldsplit_detect_saddle_point')
-        # #PETScOptions.set('fieldsplit_u_pc_type', 'lsc')
-        # #PETScOptions.set('fieldsplit_u_ksp_type', 'preonly')
+    # solver = PETScKrylovSolver('gmres')
+    # solver.set_operator(A)
+    # solver.set_from_options()
 
-        # PETScOptions.set('pc_type', 'fieldsplit')
-        # PETScOptions.set('fieldsplit_u_pc_type', 'hypre')
-        # PETScOptions.set('fieldsplit_u_ksp_type', 'preonly')
-        # PETScOptions.set('fieldsplit_p_pc_type', 'jacobi')
-        # PETScOptions.set('fieldsplit_p_ksp_type', 'preonly')
+    # http://scicomp.stackexchange.com/questions/7288/which-preconditioners-and-solver-in-petsc-for-indefinite-symmetric-systems-sho
+    # PETScOptions.set('pc_type', 'fieldsplit')
+    # #PETScOptions.set('pc_fieldsplit_type', 'schur')
+    # #PETScOptions.set('pc_fieldsplit_schur_fact_type', 'upper')
+    # PETScOptions.set('pc_fieldsplit_detect_saddle_point')
+    # #PETScOptions.set('fieldsplit_u_pc_type', 'lsc')
+    # #PETScOptions.set('fieldsplit_u_ksp_type', 'preonly')
 
-        # # From PETSc/src/ksp/ksp/examples/tutorials/ex42-fsschur.opts:
-        # PETScOptions.set('pc_type', 'fieldsplit')
-        # PETScOptions.set('pc_fieldsplit_type', 'SCHUR')
-        # PETScOptions.set('pc_fieldsplit_schur_fact_type', 'UPPER')
-        # PETScOptions.set('fieldsplit_p_ksp_type', 'preonly')
-        # PETScOptions.set('fieldsplit_u_pc_type', 'bjacobi')
+    # PETScOptions.set('pc_type', 'fieldsplit')
+    # PETScOptions.set('fieldsplit_u_pc_type', 'hypre')
+    # PETScOptions.set('fieldsplit_u_ksp_type', 'preonly')
+    # PETScOptions.set('fieldsplit_p_pc_type', 'jacobi')
+    # PETScOptions.set('fieldsplit_p_ksp_type', 'preonly')
 
-        # From
-        #
-        # Composable Linear Solvers for Multiphysics;
-        # J. Brown, M. Knepley, D.A. May, L.C. McInnes, B. Smith;
-        # <http://www.computer.org/csdl/proceedings/ispdc/2012/4805/00/4805a055-abs.html>;
-        # <http://www.mcs.anl.gov/uploads/cels/papers/P2017-0112.pdf>.
-        #
-        # PETScOptions.set('pc_type', 'fieldsplit')
-        # PETScOptions.set('pc_fieldsplit_type', 'schur')
-        # PETScOptions.set('pc_fieldsplit_schur_factorization_type', 'upper')
-        # #
-        # PETScOptions.set('fieldsplit_u_ksp_type', 'cg')
-        # PETScOptions.set('fieldsplit_u_ksp_rtol', 1.0e-6)
-        # PETScOptions.set('fieldsplit_u_pc_type', 'bjacobi')
-        # PETScOptions.set('fieldsplit_u_sub_pc_type', 'cholesky')
-        # #
-        # PETScOptions.set('fieldsplit_p_ksp_type', 'fgmres')
-        # PETScOptions.set('fieldsplit_p_ksp_constant_null_space')
-        # PETScOptions.set('fieldsplit_p_pc_type', 'lsc')
-        # #
-        # PETScOptions.set('fieldsplit_p_lsc_ksp_type', 'cg')
-        # PETScOptions.set('fieldsplit_p_lsc_ksp_rtol', 1.0e-2)
-        # PETScOptions.set('fieldsplit_p_lsc_ksp_constant_null_space')
-        # #PETScOptions.set('fieldsplit_p_lsc_ksp_converged_reason')
-        # PETScOptions.set('fieldsplit_p_lsc_pc_type', 'bjacobi')
-        # PETScOptions.set('fieldsplit_p_lsc_sub_pc_type', 'icc')
-    else:
-        # Use the preconditioner as recommended in
-        # <http://fenicsproject.org/documentation/dolfin/dev/python/demo/pde/stokes-iterative/python/documentation.html>,
-        #
-        #     prec = inner(grad(u), grad(v))*dx - p*q*dx
-        #
-        # although it doesn't seem to be too efficient.
-        # The sign on the last term doesn't matter.
-        prec = mu * inner(grad(u), grad(v))*dx \
-             - p*q*dx
-        M, _ = assemble_system(prec, L, bcs)
-        # solver = KrylovSolver('tfqmr', 'hypre_amg')
-        solver = KrylovSolver('gmres', 'hypre_amg')
-        solver.set_operators(A, M)
+    # # From PETSc/src/ksp/ksp/examples/tutorials/ex42-fsschur.opts:
+    # PETScOptions.set('pc_type', 'fieldsplit')
+    # PETScOptions.set('pc_fieldsplit_type', 'SCHUR')
+    # PETScOptions.set('pc_fieldsplit_schur_fact_type', 'UPPER')
+    # PETScOptions.set('fieldsplit_p_ksp_type', 'preonly')
+    # PETScOptions.set('fieldsplit_u_pc_type', 'bjacobi')
+
+    # From
+    #
+    # Composable Linear Solvers for Multiphysics;
+    # J. Brown, M. Knepley, D.A. May, L.C. McInnes, B. Smith;
+    # <http://www.computer.org/csdl/proceedings/ispdc/2012/4805/00/4805a055-abs.html>;
+    # <http://www.mcs.anl.gov/uploads/cels/papers/P2017-0112.pdf>.
+    #
+    # PETScOptions.set('pc_type', 'fieldsplit')
+    # PETScOptions.set('pc_fieldsplit_type', 'schur')
+    # PETScOptions.set('pc_fieldsplit_schur_factorization_type', 'upper')
+    # #
+    # PETScOptions.set('fieldsplit_u_ksp_type', 'cg')
+    # PETScOptions.set('fieldsplit_u_ksp_rtol', 1.0e-6)
+    # PETScOptions.set('fieldsplit_u_pc_type', 'bjacobi')
+    # PETScOptions.set('fieldsplit_u_sub_pc_type', 'cholesky')
+    # #
+    # PETScOptions.set('fieldsplit_p_ksp_type', 'fgmres')
+    # PETScOptions.set('fieldsplit_p_ksp_constant_null_space')
+    # PETScOptions.set('fieldsplit_p_pc_type', 'lsc')
+    # #
+    # PETScOptions.set('fieldsplit_p_lsc_ksp_type', 'cg')
+    # PETScOptions.set('fieldsplit_p_lsc_ksp_rtol', 1.0e-2)
+    # PETScOptions.set('fieldsplit_p_lsc_ksp_constant_null_space')
+    # #PETScOptions.set('fieldsplit_p_lsc_ksp_converged_reason')
+    # PETScOptions.set('fieldsplit_p_lsc_pc_type', 'bjacobi')
+    # PETScOptions.set('fieldsplit_p_lsc_sub_pc_type', 'icc')
 
     solver.parameters['monitor_convergence'] = verbose
     solver.parameters['report'] = verbose

@@ -9,11 +9,11 @@ from __future__ import print_function
 import os
 
 import flow
+from flow import heat
 
 from dolfin import (
-    begin, end, Constant, norm, project, DOLFIN_EPS, grad, dot, dx, Mesh,
-    FunctionSpace, DirichletBC, VectorElement, FiniteElement, SubDomain,
-    TestFunction, TrialFunction, Function, assemble, XDMFFile, LUSolver,
+    begin, end, Constant, norm, project, DOLFIN_EPS, Mesh, FunctionSpace,
+    DirichletBC, VectorElement, FiniteElement, SubDomain, Function, XDMFFile,
     SpatialCoordinate, mpi_comm_world, info
     )
 import materials
@@ -52,7 +52,7 @@ def create_mesh(lcar):
                     ))
     cool_boundary = CoolBoundary()
 
-    cache_file = 'boussinesq.msh'
+    cache_file = 'boussinesq-{}.msh'.format(lcar)
     if os.path.isfile(cache_file):
         print('Using mesh from cache \'{}\'.'.format(cache_file))
         points, cells, _, _, _ = meshio.read(cache_file)
@@ -79,93 +79,25 @@ def create_mesh(lcar):
     return Mesh('test.xml'), hot_boundary, cool_boundary
 
 
-class Heat(object):
-    def __init__(self, V, conv, kappa, rho, cp, bcs):
-        # TODO stabilization
-        # About stabilization for reaction-diffusion-convection:
-        # http://www.ewi.tudelft.nl/fileadmin/Faculteit/EWI/Over_de_faculteit/Afdelingen/Applied_Mathematics/Rapporten/doc/06-03.pdf
-        # http://www.xfem.rwth-aachen.de/Project/PaperDownload/Fries_ReviewStab.pdf
-        #
-        # R = u_t \
-        #     + dot(u0, grad(trial)) \
-        #     - 1.0/(rho(293.0)*cp) * div(kappa*grad(trial))
-        # F -= R * dot(tau*u0, grad(v)) * dx
-        #
-        # Stabilization
-        # tau = stab.supg2(
-        #         mesh,
-        #         u0,
-        #         kappa/(rho(293.0)*cp),
-        #         Q.ufl_element().degree()
-        #         )
-        self.V = V
-        self.conv = conv
-        self.kappa = kappa
-        self.rho = rho
-        self.cp = cp
-        self.bcs = bcs
-        return
-
-    def _get_system(self, alpha, beta, u, v):
-        # If there are sharp temperature gradients, numerical oscillations may
-        # occur. This happens because the resulting matrix is not an M-matrix,
-        # caused by the fact that A1 puts positive elements in places other
-        # than the main diagonal. To prevent that, it is suggested by
-        # Großmann/Roos to use a vertex-centered discretization for the mass
-        # matrix part.
-        # Check
-        # https://bitbucket.org/fenics-project/ffc/issues/145/uflacs-error-for-vertex-quadrature-scheme
-        f1 = assemble(
-              u * v * dx,
-              form_compiler_parameters={
-                  'quadrature_rule': 'vertex',
-                  'representation': 'quadrature'
-                  }
-              )
-        # f1 = assemble(
-        #     u * v * dx,
-        #     form_compiler_parameters={
-        #         'quadrature_rule': 'vertex',
-        #         'quadrature_degree': 1
-        #         }
-        #     )
-        f2 = assemble(
-            - dot(self.conv, grad(u)) * v * dx
-            - self.kappa * dot(grad(u), grad(v/(self.rho*self.cp))) * dx
-            )
-        return alpha * f1 + beta * f2
-
-    # pylint: disable=unused-argument
-    def eval_alpha_M_beta_F(self, alpha, beta, u, t):
-        # Evaluate  alpha * M * u + beta * F(u, t).
-        v = TestFunction(self.V)
-        return self._get_system(alpha, beta, u, v)
-
-    def solve_alpha_M_beta_F(self, alpha, beta, b, t):
-        # Solve  alpha * M * u + beta * F(u, t) = b  for u.
-        u = TrialFunction(self.V)
-        v = TestFunction(self.V)
-        A = self._get_system(alpha, beta, u, v)
-
-        for bc in self.bcs:
-            bc.apply(A, b)
-
-        # solver = KrylovSolver('gmres', 'ilu')
-        # solver.parameters['relative_tolerance'] = 1.0e-13
-        # solver.parameters['absolute_tolerance'] = 0.0
-        # solver.parameters['maximum_iterations'] = 1000
-        # solver.parameters['monitor_convergence'] = True
-
-        # The Krylov solver doesn't converge
-        solver = LUSolver()
-        solver.set_operator(A)
-
-        u = Function(self.V)
-        solver.solve(u.vector(), b)
-        return u
+def test_boussinesq():
+    u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=False)
+    ref = 3.959158183043053e-06
+    assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
+    ref = 40.225818326711604
+    assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
+    return
 
 
-def test_boussinesq(target_time=0.1, lcar=0.1):
+def test_boussinesq_with_supg():
+    u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=True)
+    ref = 3.9591568082077104e-06
+    assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
+    ref = 40.225818361936234
+    assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
+    return
+
+
+def compute_boussinesq(target_time, lcar, supg=False):
     mesh, hot_boundary, cool_boundary = create_mesh(lcar)
 
     room_temp = 293.0
@@ -263,9 +195,9 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
             theta_prev = Function(theta0.function_space())
             theta_prev.assign(theta0)
             is_banach_converged = False
-            banach_tol = 1.0e-5
-            max_banach_steps = 50
-            target_banach_steps = 25
+            banach_tol = 1.0e-1
+            max_banach_steps = 10
+            target_banach_steps = 5
             banach_step = 0
             while not is_banach_converged:
                 banach_step += 1
@@ -286,12 +218,14 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                     ]
                 # Use all quantities at room temperature to avoid nonlinearity
                 stepper = parabolic.ImplicitEuler(
-                        Heat(
+                        heat.Heat(
                             Q, u_prev,
                             kappa(room_temp), rho(room_temp), cp(room_temp),
-                            heat_bcs
+                            heat_bcs, Constant(0.0),
+                            supg_stabilization=supg
                             )
                         )
+
                 theta1 = stepper.step(theta0, t, dt)
                 end()
 
@@ -430,8 +364,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 t += dt
                 end()
 
-    return
+    return u1, p1, theta1
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=120.0, lcar=0.3e-2)
+    compute_boussinesq(target_time=120.0, lcar=0.3e-2)
