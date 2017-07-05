@@ -60,6 +60,12 @@ void eval(
     conv_norm += v[i]*v[i];
   conv_norm = sqrt(conv_norm);
 
+  // Bail out early if there's no convection; avoids NaNs.
+  if (conv_norm < 1.0e-10) {
+    tau[0] = 0.0;
+    return;
+  }
+
   Cell cell(*mesh, c.index);
 
   //// The alternative for the lazy:
