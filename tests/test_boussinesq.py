@@ -203,9 +203,11 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                         heat.Heat(
                             Q, u_prev,
                             kappa(room_temp), rho(room_temp), cp(room_temp),
-                            heat_bcs
+                            heat_bcs, Constant(0.0),
+                            supg_stabilization=False
                             )
                         )
+
                 theta1 = stepper.step(theta0, t, dt)
                 end()
 
