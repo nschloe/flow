@@ -10,6 +10,13 @@ from . import stabilization
 
 
 class Heat(object):
+    '''
+    Provides methods for computing
+
+    ..math::
+
+        u' = F(t, u).
+    '''
     def __init__(
             self, V, conv, kappa, rho, cp, bcs, source,
             supg_stabilization=False
@@ -45,9 +52,9 @@ class Heat(object):
         #     )
 
         f = (
-            + kappa * dot(grad(u), grad(v / rho_cp)) * dx
-            + dot(conv, grad(u)) * v * dx
-            - source * v * dx
+            - kappa * dot(grad(u), grad(v / rho_cp)) * dx
+            - dot(conv, grad(u)) * v * dx
+            + source * v * dx
             )
 
         if supg_stabilization:
@@ -69,16 +76,16 @@ class Heat(object):
             element_degree = v.ufl_element().degree()
             tau = stabilization.supg(mesh, conv, kappa, element_degree)
             #
-            self.M -= assemble(u * tau * dot(conv, grad(v)) * dx)
+            self.M += assemble(u * tau * dot(conv, grad(v)) * dx)
             #
             R2 = (
-                - div(kappa * grad(u)) / rho_cp
-                + dot(conv, grad(u))
-                - source / rho_cp
+                + div(kappa * grad(u)) / rho_cp
+                - dot(conv, grad(u))
+                + source / rho_cp
                 )
             f += R2 * tau * dot(conv, grad(v)) * dx
 
-        self.A, self.b = assemble_system(-lhs(f), rhs(f))
+        self.A, self.b = assemble_system(lhs(f), rhs(f))
         return
 
     # pylint: disable=unused-argument
