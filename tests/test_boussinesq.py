@@ -52,7 +52,7 @@ def create_mesh(lcar):
                     ))
     cool_boundary = CoolBoundary()
 
-    cache_file = 'boussinesq.msh'
+    cache_file = 'boussinesq-{}.msh'.format(lcar)
     if os.path.isfile(cache_file):
         print('Using mesh from cache \'{}\'.'.format(cache_file))
         points, cells, _, _, _ = meshio.read(cache_file)
@@ -79,7 +79,25 @@ def create_mesh(lcar):
     return Mesh('test.xml'), hot_boundary, cool_boundary
 
 
-def test_boussinesq(target_time=0.1, lcar=0.1):
+def test_boussinesq():
+    u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=False)
+    ref = 7.717866694234539e-06
+    assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
+    ref = 40.35638391160463
+    assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
+    return
+
+
+def test_boussinesq_with_supg():
+    u1, _, theta1 = compute_boussinesq(target_time=1.0, lcar=0.1, supg=True)
+    ref = 7.718099717545708e-06
+    assert abs(norm(u1, 'L2') - ref) < 1.0e-6 * ref
+    ref = 40.35638391160463
+    assert abs(norm(theta1, 'L2') - ref) < 1.0e-6 * ref
+    return
+
+
+def compute_boussinesq(target_time, lcar, supg=False):
     mesh, hot_boundary, cool_boundary = create_mesh(lcar)
 
     room_temp = 293.0
@@ -204,7 +222,7 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                             Q, u_prev,
                             kappa(room_temp), rho(room_temp), cp(room_temp),
                             heat_bcs, Constant(0.0),
-                            supg_stabilization=False
+                            supg_stabilization=supg
                             )
                         )
 
@@ -346,8 +364,8 @@ def test_boussinesq(target_time=0.1, lcar=0.1):
                 t += dt
                 end()
 
-    return
+    return u1, p1, theta1
 
 
 if __name__ == '__main__':
-    test_boussinesq(target_time=120.0, lcar=0.3e-2)
+    compute_boussinesq(target_time=120.0, lcar=0.3e-2)
