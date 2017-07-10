@@ -164,6 +164,7 @@ def compute_boussinesq(target_time, lcar, supg=False):
     with XDMFFile(mpi_comm_world(), 'boussinesq.xdmf') as xdmf_file:
         xdmf_file.parameters['flush_output'] = True
         xdmf_file.parameters['rewrite_function_mesh'] = False
+        xdmf_file.parameters['functions_share_mesh'] = True
 
         while t < target_time + DOLFIN_EPS:
             begin('Time step %e -> %e...' % (t, t+dt))
@@ -368,4 +369,4 @@ def compute_boussinesq(target_time, lcar, supg=False):
 
 
 if __name__ == '__main__':
-    compute_boussinesq(target_time=120.0, lcar=0.3e-2)
+    compute_boussinesq(target_time=2.0, lcar=0.3e-2)

@@ -214,6 +214,7 @@ def test_karman(num_steps=2, lcar=0.1, show=False):
     with XDMFFile(mpi_comm_world(), 'karman.xdmf') as xdmf_file:
         xdmf_file.parameters['flush_output'] = True
         xdmf_file.parameters['rewrite_function_mesh'] = False
+        xdmf_file.parameters['functions_share_mesh'] = True
 
         k = 0
         while k < num_steps:
