@@ -28,28 +28,7 @@ class Heat(object):
         v = TestFunction(V)
         rho_cp = rho * cp
 
-        # If there are sharp temperature gradients, numerical oscillations may
-        # occur. This happens because the resulting matrix is not an M-matrix,
-        # caused by the fact that A1 puts positive elements in places other
-        # than the main diagonal. To prevent that, it is suggested by
-        # Großmann/Roos to use a vertex-centered discretization for the mass
-        # matrix part.
-        # Check
-        # https://bitbucket.org/fenics-project/ffc/issues/145/uflacs-error-for-vertex-quadrature-scheme
-        self.M = assemble(
-              u * v * dx,
-              form_compiler_parameters={
-                  'quadrature_rule': 'vertex',
-                  'representation': 'quadrature'
-                  }
-              )
-        # self.f1 = assemble(
-        #     u * v * dx,
-        #     form_compiler_parameters={
-        #         'quadrature_rule': 'vertex',
-        #         'quadrature_degree': 1
-        #         }
-        #     )
+        m = u * v * dx
 
         f = (
             - kappa * dot(grad(u), grad(v / rho_cp)) * dx
@@ -76,7 +55,7 @@ class Heat(object):
             element_degree = v.ufl_element().degree()
             tau = stabilization.supg(mesh, conv, kappa, element_degree)
             #
-            self.M += assemble(u * tau * dot(conv, grad(v)) * dx)
+            m += u * tau * dot(conv, grad(v)) * dx
             #
             R2 = (
                 + div(kappa * grad(u)) / rho_cp
@@ -84,6 +63,30 @@ class Heat(object):
                 + source / rho_cp
                 )
             f += R2 * tau * dot(conv, grad(v)) * dx
+
+        # If there are sharp temperature gradients, numerical oscillations may
+        # occur. This happens because the resulting lhs matrix M is not an
+        # M-matrix, caused by the fact that M has positive elements in places
+        # other than the main diagonal. To prevent that, it is suggested by
+        # Großmann/Roos to use a vertex-centered discretization for the mass
+        # matrix part.
+        # Check
+        # https://bitbucket.org/fenics-project/ffc/issues/145/uflacs-error-for-vertex-quadrature-scheme
+        self.M = assemble(
+              m,
+              form_compiler_parameters={
+                  'quadrature_rule': 'vertex',
+                  'representation': 'quadrature'
+                  }
+              )
+        # self.M = assemble(m)
+        # self.M = assemble(
+        #     m,
+        #     form_compiler_parameters={
+        #         'quadrature_rule': 'vertex',
+        #         'quadrature_degree': 1
+        #         }
+        #     )
 
         self.A, self.b = assemble_system(lhs(f), rhs(f))
         return
@@ -111,12 +114,18 @@ class Heat(object):
             right_hand_side += b
 
         for bc in self.bcs:
-            bc.apply(A, b)
+            bc.apply(A, right_hand_side)
 
         # The Krylov solver doesn't converge
         solver = LUSolver()
         solver.set_operator(A)
 
         u = Function(self.V)
-        solver.solve(u.vector(), b)
+        solver.solve(u.vector(), right_hand_side)
         return u
+
+    def solve_stationary(self):
+        '''Solve the stationary problem :code:`F(u, t) = 0`  with Dirichlet
+        conditions.
+        '''
+        return self.solve_alpha_M_beta_F(alpha=0.0, beta=1.0, b=None, t=0.0)
