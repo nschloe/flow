@@ -117,7 +117,7 @@ def compute_boussinesq(target_time, lcar, supg=False):
     # dt0 = 0.2 * mesh.hmin() / umax
     t = 0.0
 
-    max_heater_temp = 320.0
+    max_heater_temp = 360.0
 
     # Gravity accelleration.
     accelleration_constant = -9.81
@@ -369,4 +369,4 @@ def compute_boussinesq(target_time, lcar, supg=False):
 
 
 if __name__ == '__main__':
-    compute_boussinesq(target_time=2.0, lcar=0.3e-2)
+    compute_boussinesq(target_time=120.0, lcar=0.3e-2, supg=True)
